@@ -1,0 +1,95 @@
+name: Build Windows app
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: build-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: windows-latest
+    timeout-minutes: 30
+    env:
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+
+      - name: Install Python packages
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt "pyinstaller>=6.11"
+
+      - name: Decide whether to publish a release
+        id: rel
+        shell: bash
+        run: |
+          V="v$(tr -d '[:space:]' < VERSION)"
+          PUBLISH=false
+          if [[ "$GITHUB_REF" == "refs/heads/main" ]] && ! gh release view "$V" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+            PUBLISH=true
+            echo "New version $V - will publish a release if everything passes."
+          fi
+          echo "tag=$V" >> "$GITHUB_OUTPUT"
+          echo "publish=$PUBLISH" >> "$GITHUB_OUTPUT"
+
+      - name: Download the handwriting font (Kalam, SIL Open Font License)
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force web/fonts | Out-Null
+          foreach ($f in "Kalam-Regular.ttf", "Kalam-Bold.ttf", "OFL.txt") {
+            Invoke-WebRequest "https://github.com/google/fonts/raw/main/ofl/kalam/$f" -OutFile "web/fonts/$f"
+          }
+          Get-ChildItem web/fonts | ForEach-Object { "{0}  {1:N0} KB" -f $_.Name, ($_.Length / 1KB) }
+
+      - name: Notebook tests (saving, renaming, moving, sorting, Windows file names)
+        run: python tests/test_store.py
+
+      - name: Build exe
+        run: pyinstaller NiSHNotes.spec --noconfirm
+
+      - name: GUI smoke test (opens the window and clicks through everything)
+        shell: pwsh
+        run: |
+          $out = Join-Path $PWD "gui-smoke"
+          $p = Start-Process -FilePath "dist\NiSHNotes.exe" -ArgumentList "--smoketest", "`"$out`"" -PassThru
+          if (-not $p.WaitForExit(300000)) { $p.Kill(); $timedOut = $true }
+          $report = ""
+          if (Test-Path "$out\gui_smoketest.txt") { $report = Get-Content "$out\gui_smoketest.txt" -Raw }
+          Write-Output $report
+          if ($timedOut -or $p.ExitCode -ne 0 -or $report -notmatch "GUI SMOKETEST PASSED") {
+            $msg = ("timedOut=$timedOut exit=$($p.ExitCode)`n" + $report) -replace '%','%25' -replace "`r",'' -replace "`n",'%0A'
+            Write-Output "::error title=gui-smoketest::$msg"
+            throw "GUI smoke test failed"
+          }
+          $short = (($report -replace "`r", "" -split "`n") | Where-Object { $_ -match "^ok" }) -join "%0A"
+          Write-Output "::notice title=gui-smoketest::$short"
+          "{0:N1} MB" -f ((Get-Item dist\NiSHNotes.exe).Length / 1MB)
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: NiSHNotes-windows
+          path: dist/NiSHNotes.exe
+          retention-days: 14
+
+      - name: Publish release
+        if: steps.rel.outputs.publish == 'true'
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ steps.rel.outputs.tag }}
+          target_commitish: ${{ github.sha }}
+          name: NiSH Notes ${{ steps.rel.outputs.tag }}
+          body: "Download **NiSHNotes.exe** below and double-click it. No installer, no admin rights."
+          make_latest: true
+          files: dist/NiSHNotes.exe

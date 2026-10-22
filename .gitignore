@@ -1,0 +1,8 @@
+__pycache__/
+*.pyc
+build/
+dist/
+gui-smoke/
+smoketest-out/
+web/fonts/*.ttf
+web/fonts/OFL.txt
