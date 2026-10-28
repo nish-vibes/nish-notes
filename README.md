@@ -19,6 +19,11 @@ the first time because the app isn't signed: click **More info → Run anyway**.
 - **Formatting like Notes on a Mac.** Click **Aa** for Title, Heading, Subheading, Body and
   Monostyled, **bold**, *italic*, underline, strikethrough, bulleted, dashed and numbered lists
   and indenting. The checklist button makes a to-do list; click a circle to tick it off.
+- **Undo and Redo** (the arrows at the top, or Ctrl+Z / Ctrl+Y) go back through everything on the
+  page in order: typing, formatting, tables and drawing. The page title has its own Ctrl+Z.
+- **Tables.** Aa → Table (or Ctrl+Alt+T). Tab moves to the next cell and adds a row at the end.
+  A small bar above the table adds and removes rows and columns; right-click a cell for more.
+  Rows stay on the ruled lines.
 - **Margin notes.** The narrow column left of the red line is its own little text area, for dates,
   keywords or reminders next to your page.
 - **Scribble.** Draw on the page with a pen or a see-through marker in six colours and three sizes.
@@ -41,7 +46,7 @@ Shortcuts: **Ctrl+N** new page · **Ctrl+Shift+N** new folder · **Ctrl+F** sear
 **Ctrl+Shift+T / H / J / B / M** title, heading, subheading, body, monostyled ·
 **Ctrl+Shift+L** checklist · **Ctrl+Shift+7 / 8 / 9** bulleted, dashed, numbered list ·
 **Tab / Shift+Tab** indent in lists · **Ctrl+Shift+V** paste without formatting ·
-in Scribble: **P / M / E** pen, marker, eraser, **Ctrl+Z / Ctrl+Y** undo, redo, **Esc** done.
+**Ctrl+Z / Ctrl+Y** undo, redo · **Ctrl+Alt+T** table · in Scribble: **P / M / E** pen, marker, eraser, **Esc** done.
 
 ## Where your notes are
 

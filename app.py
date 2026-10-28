@@ -225,7 +225,7 @@ def smoketest(window, api, outdir):
         root = Path(api._nb.root)
         moved = root / "Smoke B" / "Renamed page.html"
         raw = moved.read_text(encoding="utf-8") if moved.is_file() else ""
-        good = "<b>Hello</b> from the smoke test" in raw and "Margin note" in raw and "<svg" in raw and "data-checked" in raw
+        good = "<b>Hello</b> from the smoke test" in raw and "Margin note" in raw and "<svg" in raw and "data-checked" in raw and "<td>Day</td>" in raw
         lines.append(("ok   " if good else "FAIL ") + "page saved (formatting, margin note, drawing), renamed and moved on disk")
         ok = ok and good
         trashed = any((root / store.TRASH).glob("*.html"))

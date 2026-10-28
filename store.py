@@ -57,7 +57,7 @@ _PART = {k: re.compile(r"<!--nn:%s-->(.*?)<!--/nn:%s-->" % (k, k), re.S) for k i
 _INK = re.compile(r'<script type="application/json" id="nn-ink">(.*?)</script>', re.S)
 _BODY = re.compile(r"<body[^>]*>(.*)</body>", re.S | re.I)
 _TAG = re.compile(r"<[^>]+>")
-_BLOCK_END = re.compile(r"</(p|div|h[1-6]|li|pre|tr)>|<br\s*/?>", re.I)
+_BLOCK_END = re.compile(r"</(p|div|h[1-6]|li|pre|tr|td)>|<br\s*/?>", re.I)
 MAX_POINTS = 20000          # per stroke
 MAX_STROKES = 5000
 
@@ -75,6 +75,8 @@ ul.dashed{list-style:none}ul.dashed>li::before{content:"\\2013";display:inline-b
 ul.checklist{list-style:none}ul.checklist>li::before{content:"\\25CB";display:inline-block;width:24px;margin-left:-24px}
 ul.checklist>li[data-checked]::before{content:"\\25C9"}ul.checklist>li[data-checked]{color:#8a8f98}
 .nn-ink{position:absolute;left:0;top:0;pointer-events:none;overflow:visible}
+.nn-page table{width:100%;table-layout:fixed;border-collapse:collapse;box-shadow:inset 1px 1px 0 #8FA6C7}
+.nn-page td{padding:0 8px;line-height:32px;vertical-align:top;box-shadow:inset -1px -1px 0 #8FA6C7}
 @media print{.nn-page{background:none}}
 """
 

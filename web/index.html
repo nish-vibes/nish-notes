@@ -17,6 +17,13 @@
       </div>
       <div class="head-tools" role="toolbar" aria-label="Page tools">
         <span class="date" id="date"></span>
+        <button type="button" class="tool" id="undoBtn" title="Undo (Ctrl+Z)" aria-label="Undo" disabled>
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M9 14 4 9l5-5"/><path d="M4 9h10.5a5.5 5.5 0 0 1 0 11H11"/></svg>
+        </button>
+        <button type="button" class="tool" id="redoBtn" title="Redo (Ctrl+Y)" aria-label="Redo" disabled>
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="m15 14 5-5-5-5"/><path d="M20 9H9.5a5.5 5.5 0 0 0 0 11H13"/></svg>
+        </button>
+        <span class="tool-gap" aria-hidden="true"></span>
         <button type="button" class="tool aa" id="formatBtn" title="Text format" aria-label="Text format" aria-haspopup="dialog" aria-expanded="false">Aa</button>
         <button type="button" class="tool" id="checkBtn" title="Checklist (Ctrl+Shift+L)" aria-label="Checklist">
           <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="5.5" cy="7" r="2.5"/><path d="m4.3 7 .9.9 1.6-1.8"/><circle cx="5.5" cy="17" r="2.5"/><path d="M11 7h10M11 17h10"/></svg>
@@ -128,6 +135,15 @@
       <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M11 6h9M11 12h9M11 18h9M4 9l3 3-3 3"/></svg>
     </button>
   </div>
+  <button type="button" class="st st-table" id="tableBtn"><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3.5" y="5" width="17" height="14" rx="1.5"/><path d="M3.5 9.7h17M3.5 14.3h17M12 5v14"/></svg><span>Table</span><kbd>Ctrl+Alt+T</kbd></button>
+</div>
+<div class="tablebar" id="tableBar" role="toolbar" aria-label="Table" hidden>
+  <button type="button" data-op="rowBelow" title="Add a row below">+ Row</button>
+  <button type="button" data-op="colRight" title="Add a column to the right">+ Column</button>
+  <span class="sep" aria-hidden="true"></span>
+  <button type="button" data-op="delRow" title="Delete this row">− Row</button>
+  <button type="button" data-op="delCol" title="Delete this column">− Column</button>
+  <button type="button" data-op="delTable" class="del" title="Delete the table" aria-label="Delete table"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7h16M10 11v6M14 11v6M6 7l1 12a2 2 0 0 0 2 2h6a2 2 0 0 0 2-2l1-12M9 7V4h6v3"/></svg></button>
 </div>
 
 <div class="menu" id="menu" role="menu" hidden></div>

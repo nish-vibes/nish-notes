@@ -62,7 +62,8 @@
   const KEEP = { DIV: 'div', P: 'div', BR: 'br', H1: 'h1', H2: 'h2', H3: 'h3', H4: 'h3', H5: 'h3', H6: 'h3', PRE: 'pre',
     B: 'b', STRONG: 'b', I: 'i', EM: 'i', U: 'u', S: 's', STRIKE: 's', DEL: 's', UL: 'ul', OL: 'ol', LI: 'li',
     BLOCKQUOTE: 'div', SECTION: 'div', ARTICLE: 'div', HEADER: 'div', FOOTER: 'div', ASIDE: 'div', MAIN: 'div', NAV: 'div',
-    FIGURE: 'div', ADDRESS: 'div', TABLE: 'div', TR: 'div', DL: 'div', DT: 'div', DD: 'div', CENTER: 'div' };
+    FIGURE: 'div', ADDRESS: 'div', DL: 'div', DT: 'div', DD: 'div', CENTER: 'div',
+    TABLE: 'table', TBODY: 'tbody', THEAD: 'tbody', TFOOT: 'tbody', TR: 'tr', TD: 'td', TH: 'td' };
   const DROP = new Set(['SCRIPT', 'STYLE', 'TEMPLATE', 'IFRAME', 'OBJECT', 'EMBED', 'HEAD', 'TITLE', 'META', 'LINK', 'NOSCRIPT',
     'SVG', 'MATH', 'CANVAS', 'VIDEO', 'AUDIO', 'IMG', 'PICTURE', 'SOURCE', 'INPUT', 'SELECT', 'TEXTAREA', 'BUTTON', 'FORM', 'XML']);
   function copyClean(src, dst) {
@@ -74,8 +75,10 @@
       const name = KEEP[tag];
       if (!name) {                                    // span, a, font, td ... keep the text only
         copyClean(n, dst);
-        if (tag === 'TD' || tag === 'TH') dst.appendChild(document.createTextNode(' '));
         continue;
+      }
+      if ((name === 'tr' && !/^(TABLE|TBODY)$/.test(dst.tagName || '')) || (name === 'td' && dst.tagName !== 'TR') || (name === 'tbody' && dst.tagName !== 'TABLE')) {
+        copyClean(n, dst); continue;                  // a stray table part: keep its text
       }
       const el = document.createElement(name);
       if (name === 'ul') {
@@ -84,6 +87,9 @@
       }
       if (name === 'li' && n.hasAttribute('data-checked')) el.setAttribute('data-checked', '');
       if (name !== 'br') copyClean(n, el);
+      if (name === 'td' && !el.firstChild) el.appendChild(document.createElement('br'));
+      if ((name === 'table' || name === 'tbody' || name === 'tr') && !el.querySelector('td')) continue;   // empty table parts
+      if (name === 'table' && dst.closest && dst.closest('table')) { while (el.firstChild) dst.appendChild(el.firstChild); continue; }
       dst.appendChild(el);
     }
   }
@@ -217,7 +223,7 @@
     for (const el of [editor, margin]) el.contentEditable = on ? 'true' : 'false';
   }
   function updateEmpty() {
-    for (const el of [editor, margin]) el.classList.toggle('is-empty', !el.textContent && !el.querySelector('li'));
+    for (const el of [editor, margin]) el.classList.toggle('is-empty', !el.textContent && !el.querySelector('li, table'));
   }
   function loadDoc(doc) {
     // A fresh element per page keeps the browser's undo history from reaching into the previous page.
@@ -230,8 +236,8 @@
     bindEditor(editor); bindEditor(margin);
     lastEd = editor;
     ink.strokes = Array.isArray(doc.ink) ? doc.ink : [];
-    ink.undo = []; ink.redo = [];
     renderInk(); updateEmpty(); syncInkButtons();
+    histReset(); $('tableBar').hidden = true;
     if (ink.on) setEditable(false);
     paper.scrollTop = 0;
   }
@@ -721,22 +727,32 @@
         const li = blockAt('LI');
         if (li && li.hasAttribute('data-checked') && !li.textContent.trim()) li.removeAttribute('data-checked');
       }
-      updateEmpty(); changed(); if (!fmt.hidden) syncFormat();
+      updateEmpty(); changed(); histTyping(); if (!fmt.hidden) syncFormat();
+    });
+    el.addEventListener('beforeinput', (e) => {         // the browser's own undo would skip the drawing
+      if (e.inputType === 'historyUndo' || e.inputType === 'historyRedo') { e.preventDefault(); if (e.inputType === 'historyUndo') undo(); else redo(); }
+    });
+    el.addEventListener('contextmenu', (e) => {
+      const td = e.target.closest && e.target.closest('td');
+      if (td && el === editor && !ink.on) { e.preventDefault(); caretIn(td, true); tableMenu(e.clientX, e.clientY); }
     });
     el.addEventListener('paste', (e) => {
       const cd = e.clipboardData; if (!cd) return;
       e.preventDefault();
+      if (hist.pending) histCommit();
       const html = cd.getData('text/html'), text = cd.getData('text/plain');
       if (html && !pastePlain) document.execCommand('insertHTML', false, sanitize(html));
       else document.execCommand('insertText', false, text);
       pastePlain = false;
+      histCommit();
     });
     el.addEventListener('mousedown', (e) => {                 // click a checklist circle to tick it
       const li = e.target.closest && e.target.closest('ul.checklist > li');
       if (li && el.contains(li) && e.clientX < li.getBoundingClientRect().left) {
         e.preventDefault();
+        if (hist.pending) histCommit();
         li.toggleAttribute('data-checked');
-        changed();
+        changed(); histCommit();
       }
     });
     el.addEventListener('keydown', onEditorKey);
@@ -788,9 +804,10 @@
   function exec(cmd, val) {
     if (!activeId || ink.on) return;
     ensureFocus();
+    if (hist.pending) histCommit();
     document.execCommand('styleWithCSS', false, false);
     document.execCommand(cmd, false, val);
-    afterEdit();
+    afterEdit(); histCommit();
   }
   function afterEdit() { updateEmpty(); changed(); if (!fmt.hidden) syncFormat(); }
   function setBlock(tag) { exec('formatBlock', tag === 'div' ? 'div' : tag); }
@@ -801,6 +818,7 @@
     if (cur && cur.kind === kind) { exec(cur.el.tagName === 'OL' ? 'insertOrderedList' : 'insertUnorderedList'); return; }
     const want = kind === 'check' ? 'checklist' : kind === 'dashed' ? 'dashed' : '';
     const ed = activeEd();
+    if (hist.pending) histCommit();
     if (kind === 'number' || !cur || cur.el.tagName === 'OL') {
       const lists = new Map(Array.from(ed.querySelectorAll('ul, ol')).map((l) => [l, l.className]));
       const items = new Set(ed.querySelectorAll('li'));
@@ -813,7 +831,7 @@
     } else {                                   // switch the whole list to another kind
       cur.el.removeAttribute('class'); if (want) cur.el.className = want;
     }
-    afterEdit();
+    afterEdit(); histCommit();
   }
   function splitNewItems(list, oldItems, want) {
     const fresh = Array.from(list.children).filter((li) => li.tagName === 'LI' && !oldItems.has(li));
@@ -839,17 +857,20 @@
     const cur = currentList(); if (!cur) return;
     exec(more ? 'indent' : 'outdent');
     const now = currentList();                       // a nested list keeps its parent's look
-    if (more && now && now.el !== cur.el && now.el.tagName === 'UL' && cur.el.tagName === 'UL' && cur.el.className) now.el.className = cur.el.className;
+    if (more && now && now.el !== cur.el && now.el.tagName === 'UL' && cur.el.tagName === 'UL' && cur.el.className) { now.el.className = cur.el.className; histCommit(); }
   }
 
   function onEditorKey(e) {
     const ctrl = e.ctrlKey || e.metaKey;
     if (e.key === 'Tab' && !ctrl && !e.altKey) {
       e.preventDefault();
-      if (currentList()) indent(!e.shiftKey);
+      const td = blockAt('TD');
+      if (td) moveCell(td, e.shiftKey ? -1 : 1);
+      else if (currentList()) indent(!e.shiftKey);
       else if (!e.shiftKey) { document.execCommand('insertText', false, '\t'); }
       return;
     }
+    if (ctrl && e.altKey && !e.shiftKey && e.code === 'KeyT') { e.preventDefault(); insertTable(); return; }
     if (!ctrl || e.altKey) return;
     const k = e.key.toLowerCase();
     if (!e.shiftKey) {
@@ -890,6 +911,7 @@
     fmt.querySelectorAll('[data-mark]').forEach((b) => b.setAttribute('aria-pressed', String(!!document.queryCommandState(b.dataset.mark))));
     fmt.querySelectorAll('[data-list]').forEach((b) => b.setAttribute('aria-pressed', String(!!list && list.kind === b.dataset.list)));
     fmt.querySelectorAll('[data-indent]').forEach((b) => { b.disabled = !list; });
+    $('tableBtn').disabled = activeEd() === margin || !!blockAt('TABLE');
   }
   fmt.addEventListener('mousedown', (e) => e.preventDefault());          // keep the text selection
   fmt.addEventListener('click', (e) => {
@@ -898,12 +920,163 @@
     else if (b.dataset.mark) exec(b.dataset.mark);
     else if (b.dataset.list) setList(b.dataset.list);
     else if (b.dataset.indent) indent(b.dataset.indent === 'indent');
+    else if (b.id === 'tableBtn') { closeFormat(); insertTable(); }
   });
   document.addEventListener('selectionchange', () => { if (!fmt.hidden) syncFormat(); });
   $('formatBtn').addEventListener('mousedown', (e) => e.preventDefault());
   $('formatBtn').addEventListener('click', () => { if (fmt.hidden) openFormat(); else closeFormat(); });
   $('checkBtn').addEventListener('mousedown', (e) => e.preventDefault());
   $('checkBtn').addEventListener('click', () => setList('check'));
+
+  // ---------- one undo history per page: text, margin notes and drawing together ----------
+  // Each step is a snapshot of the page. Typing is grouped into one step per pause; a command,
+  // a stroke, an erase or a table change is a step of its own. Ctrl+Z / Ctrl+Y walk through them.
+  const hist = { stack: [], i: 0, timer: 0, pending: false };
+  function caretInfo() {
+    const ed = activeEd(); if (!ed) return null;
+    const s = getSelection();
+    const r = document.createRange(); r.selectNodeContents(ed);
+    try { r.setEnd(s.anchorNode, s.anchorOffset); } catch (e) { return null; }
+    return { m: ed === margin, o: r.toString().length };
+  }
+  function snap() { return { text: editor.innerHTML, margin: margin.innerHTML, ink: ink.strokes.slice(), caret: caretInfo() }; }
+  function sameSnap(a, b) { return a.text === b.text && a.margin === b.margin && a.ink.length === b.ink.length && a.ink.every((x, i) => x === b.ink[i]); }
+  function histReset() { clearTimeout(hist.timer); hist.pending = false; hist.stack = [snap()]; hist.i = 0; syncUndo(); }
+  function histCommit() {
+    clearTimeout(hist.timer); hist.pending = false;
+    if (!activeId) return;
+    const now = snap(), cur = hist.stack[hist.i];
+    if (cur && sameSnap(cur, now)) { cur.caret = now.caret || cur.caret; syncUndo(); return; }
+    hist.stack.splice(hist.i + 1); hist.stack.push(now); hist.i = hist.stack.length - 1;
+    if (hist.stack.length > 400) { hist.stack.shift(); hist.i--; }
+    syncUndo();
+  }
+  function histTyping() { hist.pending = true; clearTimeout(hist.timer); hist.timer = setTimeout(histCommit, 700); syncUndo(); }
+  function histGo(step) {
+    if (!activeId) return false;
+    if (hist.pending) histCommit();
+    const j = hist.i + step;
+    if (j < 0 || j >= hist.stack.length) return false;
+    hist.i = j;
+    const st = hist.stack[j];
+    editor.innerHTML = st.text; margin.innerHTML = st.margin; ink.strokes = st.ink.slice();
+    renderInk(); updateEmpty(); restoreCaret(st.caret);
+    changed(); syncUndo(); placeTableBar();
+    if (!fmt.hidden) syncFormat();
+    return true;
+  }
+  function undo() { if (!histGo(-1)) flashButton('undoBtn'); }
+  function redo() { if (!histGo(1)) flashButton('redoBtn'); }
+  function flashButton(id) { const b = $(id); if (b.animate) b.animate([{ transform: 'translateX(-2px)' }, { transform: 'translateX(2px)' }, { transform: 'none' }], 160); }
+  function restoreCaret(c) {
+    if (!c || ink.on) return;
+    const ed = c.m ? margin : editor;
+    const walker = document.createTreeWalker(ed, NodeFilter.SHOW_TEXT);
+    let left = c.o, n, node = null, off = 0;
+    while ((n = walker.nextNode())) { if (n.nodeValue.length >= left) { node = n; off = left; break; } left -= n.nodeValue.length; }
+    const r = document.createRange();
+    if (node) r.setStart(node, off); else { r.selectNodeContents(ed); r.collapse(false); }
+    r.collapse(true);
+    ed.focus({ preventScroll: true });
+    const s = getSelection(); s.removeAllRanges(); s.addRange(r);
+    const rect = r.getBoundingClientRect(), pr = paper.getBoundingClientRect();
+    if (rect.top && (rect.top < pr.top || rect.bottom > pr.bottom)) paper.scrollTop += rect.top - pr.top - pr.height / 3;
+  }
+  function syncUndo() {
+    const can = !!activeId && (hist.pending || hist.i > 0), again = !!activeId && !hist.pending && hist.i < hist.stack.length - 1;
+    for (const id of ['undoBtn', 'inkUndo']) $(id).disabled = !can;
+    for (const id of ['redoBtn', 'inkRedo']) $(id).disabled = !again;
+  }
+  for (const [id, fn] of [['undoBtn', undo], ['redoBtn', redo]]) {
+    $(id).addEventListener('mousedown', (e) => e.preventDefault());     // keep the caret where it is
+    $(id).addEventListener('click', fn);
+  }
+
+  // ---------- tables ----------
+  const newCell = () => { const td = document.createElement('td'); td.appendChild(document.createElement('br')); return td; };
+  function caretIn(el, atEnd) {
+    const r = document.createRange(); r.selectNodeContents(el); r.collapse(!atEnd);
+    const s = getSelection(); s.removeAllRanges(); s.addRange(r);
+  }
+  function insertTable(rows, cols) {
+    if (!activeId || ink.on) return;
+    if (activeEd() !== editor) { editor.focus(); caretIn(editor, true); }
+    if (blockAt('TABLE')) { toast('A table can’t go inside another table.'); return; }
+    if (hist.pending) histCommit();
+    const row = '<tr>' + '<td><br></td>'.repeat(cols || 2) + '</tr>';
+    document.execCommand('insertHTML', false, '<table data-new=""><tbody>' + row.repeat(rows || 3) + '</tbody></table><div><br></div>');
+    const t = editor.querySelector('table[data-new]');
+    if (t) { t.removeAttribute('data-new'); caretIn(t.rows[0].cells[0], false); }
+    afterEdit(); histCommit(); placeTableBar();
+  }
+  function tableOp(op) {
+    const td = blockAt('TD'); if (!td) return;
+    if (hist.pending) histCommit();
+    const tr = td.parentNode, table = td.closest('table'), col = Array.from(tr.cells).indexOf(td);
+    if (op === 'rowAbove' || op === 'rowBelow') {
+      const nr = document.createElement('tr');
+      for (let i = 0; i < tr.cells.length; i++) nr.appendChild(newCell());
+      tr.parentNode.insertBefore(nr, op === 'rowBelow' ? tr.nextSibling : tr);
+      caretIn(nr.cells[col], false);
+    } else if (op === 'colLeft' || op === 'colRight') {
+      for (const row of Array.from(table.rows)) {
+        const ref = row.cells[Math.min(col, row.cells.length - 1)];
+        row.insertBefore(newCell(), op === 'colRight' ? ref.nextSibling : ref);
+      }
+      caretIn(tr.cells[op === 'colRight' ? col + 1 : col], false);
+    } else if (op === 'delRow' && table.rows.length > 1) {
+      const next = tr.nextElementSibling || tr.previousElementSibling;
+      tr.remove(); caretIn(next.cells[Math.min(col, next.cells.length - 1)], true);
+    } else if (op === 'delCol' && tr.cells.length > 1) {
+      for (const row of Array.from(table.rows)) if (row.cells[col]) row.cells[col].remove();
+      caretIn(tr.cells[Math.min(col, tr.cells.length - 1)], true);
+    } else {                                       // the whole table (or its last row or column)
+      const after = table.nextElementSibling;
+      table.remove();
+      if (after) caretIn(after, false); else caretIn(editor, true);
+    }
+    afterEdit(); histCommit(); placeTableBar();
+  }
+  function moveCell(td, dir) {
+    const cells = Array.from(td.closest('table').querySelectorAll('td'));
+    const i = cells.indexOf(td) + dir;
+    if (i < 0) return;
+    if (i >= cells.length) {                                   // Tab in the last cell adds a row
+      tableOp('rowBelow');
+      const row = td.closest('tr').nextElementSibling; if (row) caretIn(row.cells[0], false);
+      return;
+    }
+    caretIn(cells[i], true);
+    placeTableBar();
+  }
+  function tableMenu(x, y) {
+    openMenu(x, y, [
+      { label: 'Add row above', run: () => tableOp('rowAbove') },
+      { label: 'Add row below', run: () => tableOp('rowBelow') },
+      { label: 'Add column left', run: () => tableOp('colLeft') },
+      { label: 'Add column right', run: () => tableOp('colRight') },
+      '-',
+      { label: 'Delete row', run: () => tableOp('delRow') },
+      { label: 'Delete column', run: () => tableOp('delCol') },
+      { label: 'Delete table', danger: true, run: () => tableOp('delTable') },
+    ]);
+  }
+  // A small bar of table actions appears above the table while the caret is in it.
+  function placeTableBar() {
+    const bar = $('tableBar');
+    const td = !ink.on && document.activeElement === editor ? blockAt('TD') : null;
+    if (!td) { bar.hidden = true; return; }
+    const tr = td.closest('table').getBoundingClientRect(), pr = paper.getBoundingClientRect(), sr = bar.parentNode.getBoundingClientRect();
+    if (tr.bottom < pr.top + 20 || tr.top > pr.bottom - 20) { bar.hidden = true; return; }
+    bar.hidden = false;
+    bar.style.top = Math.max(pr.top - sr.top + 4, tr.top - sr.top - 40) + 'px';
+    bar.style.left = Math.max(8, tr.right - sr.left - bar.offsetWidth) + 'px';
+  }
+  $('tableBar').addEventListener('mousedown', (e) => e.preventDefault());
+  $('tableBar').addEventListener('click', (e) => { const b = e.target.closest('button[data-op]'); if (b) tableOp(b.dataset.op); });
+  document.addEventListener('selectionchange', placeTableBar);
+  paper.addEventListener('scroll', placeTableBar);
+  window.addEventListener('resize', placeTableBar);
 
   // ---------- Scribble ----------
   function strokePath(s) {
@@ -957,6 +1130,7 @@
     e.preventDefault();
     try { inkSvg.setPointerCapture(e.pointerId); } catch (err) { /* synthetic events have no pointer */ }
     const [x, y] = inkPos(e);
+    if (hist.pending) histCommit();
     if (ink.tool === 'eraser') { ink.erased = []; eraseAt(x, y); return; }
     const t = ink.tool;
     ink.cur = { t, c: ink.color[t], w: INK_SIZES[t][ink.size[t]], p: [x, y] };
@@ -978,38 +1152,26 @@
   });
   function endStroke() {
     if (ink.erased) {
-      if (ink.erased.length) { ink.undo.push({ type: 'erase', items: ink.erased }); ink.redo = []; changed(); }
+      if (ink.erased.length) { changed(); histCommit(); }
       ink.erased = null; syncInkButtons(); return;
     }
     if (!ink.cur) return;
     ink.strokes.push(ink.cur);
-    ink.undo.push({ type: 'add', s: ink.cur }); ink.redo = [];
     ink.cur = null; ink.curEl = null;
-    renderInk(); syncInkButtons(); changed();
+    renderInk(); syncInkButtons(); changed(); histCommit();
   }
   inkSvg.addEventListener('pointerup', endStroke);
   inkSvg.addEventListener('pointercancel', endStroke);
   inkSvg.addEventListener('lostpointercapture', endStroke);
 
-  function applyInk(step, back) {
-    if (step.type === 'add') {
-      if (back) ink.strokes.splice(ink.strokes.lastIndexOf(step.s), 1); else ink.strokes.push(step.s);
-    } else if (step.type === 'erase' || step.type === 'clear') {
-      if (back) step.items.slice().reverse().forEach(({ s, i }) => ink.strokes.splice(Math.min(i, ink.strokes.length), 0, s));
-      else step.items.forEach(({ s }) => { const i = ink.strokes.indexOf(s); if (i >= 0) ink.strokes.splice(i, 1); });
-    }
-  }
-  function inkUndo() { const st = ink.undo.pop(); if (!st) return; applyInk(st, true); ink.redo.push(st); renderInk(); syncInkButtons(); changed(); }
-  function inkRedo() { const st = ink.redo.pop(); if (!st) return; applyInk(st, false); ink.undo.push(st); renderInk(); syncInkButtons(); changed(); }
   async function inkClear() {
     if (!ink.strokes.length) return;
     if (!(await dialog({ title: 'Clear the drawing?', text: 'All drawing on this page is removed. You can bring it back with Undo.', ok: 'Clear' }))) return;
-    const items = ink.strokes.map((s, i) => ({ s, i }));
-    ink.strokes = []; ink.undo.push({ type: 'clear', items }); ink.redo = [];
-    renderInk(); syncInkButtons(); changed();
+    ink.strokes = [];
+    renderInk(); syncInkButtons(); changed(); histCommit();
   }
   function syncInkButtons() {
-    $('inkUndo').disabled = !ink.undo.length; $('inkRedo').disabled = !ink.redo.length; $('inkClear').disabled = !ink.strokes.length;
+    syncUndo(); $('inkClear').disabled = !ink.strokes.length;
     document.querySelectorAll('#inkBar [data-tool]').forEach((b) => b.setAttribute('aria-pressed', String(b.dataset.tool === ink.tool)));
     const t = ink.tool === 'eraser' ? null : ink.tool;
     $('inkColors').hidden = !t; $('inkSizes').hidden = !t;
@@ -1031,6 +1193,7 @@
     $('inkBar').hidden = !on;
     $('scribbleBtn').setAttribute('aria-pressed', String(on));
     setEditable(!on);
+    placeTableBar();
     if (on) { if (document.activeElement && document.activeElement.blur) document.activeElement.blur(); syncInkButtons(); $('inkBar').querySelector('[aria-pressed="true"]').focus(); }
     else { flush(); }
   }
@@ -1044,8 +1207,8 @@
       else if (b.parentNode.id === 'inkSizes' && ink.tool !== 'eraser') ink.size[ink.tool] = Array.from(b.parentNode.children).indexOf(b);
       syncInkButtons();
     });
-    $('inkUndo').addEventListener('click', inkUndo);
-    $('inkRedo').addEventListener('click', inkRedo);
+    $('inkUndo').addEventListener('click', undo);
+    $('inkRedo').addEventListener('click', redo);
     $('inkClear').addEventListener('click', inkClear);
     $('inkDone').addEventListener('click', () => setScribble(false));
     $('scribbleBtn').addEventListener('click', () => setScribble(!ink.on));
@@ -1113,8 +1276,11 @@
     }
     if (!ctrl || e.altKey) return;
     const k = e.key.toLowerCase();
-    if (ink.on && k === 'z' && !e.shiftKey) { e.preventDefault(); inkUndo(); return; }
-    if (ink.on && (k === 'y' || (k === 'z' && e.shiftKey))) { e.preventDefault(); inkRedo(); return; }
+    if ((k === 'z' || k === 'y') && e.target.tagName !== 'INPUT') {      // the title and search keep their own undo
+      e.preventDefault();
+      if (k === 'z' && !e.shiftKey) undo(); else redo();
+      return;
+    }
     if (k === 'n' && e.shiftKey) { e.preventDefault(); newFolder(); }
     else if (k === 'n') { e.preventDefault(); newPage(); }
     else if (k === 'f') { e.preventDefault(); $('search').focus(); $('search').select(); }
@@ -1206,8 +1372,8 @@
       check('drawing a stroke', ink.strokes.length === 1 && inkSvg.querySelectorAll('path').length === 1);
       ink.tool = 'eraser'; pointer('pointerdown', 240, 80); pointer('pointerup', 240, 80);
       check('eraser removes the stroke', ink.strokes.length === 0);
-      inkUndo();
-      check('undo brings it back', ink.strokes.length === 1);
+      undo();
+      check('undo brings the stroke back', ink.strokes.length === 1);
       ink.tool = 'pen'; setScribble(false);
       check('leaving scribble mode', !ink.on && editor.contentEditable === 'true');
       await sleep(600); await save.chain;
@@ -1222,6 +1388,38 @@
       api.save_page = realSave;
       $('modalOk').click(); await sleep(100); await save.chain;
       check('Try again saves it', $('modal').hidden && !save.failed && (await api.read_page(pid)).text.includes('more'));
+      // one history for typing and drawing
+      editor.focus(); caretIn(editor, true);
+      document.execCommand('insertText', false, ' undo-me');
+      await sleep(800);
+      setScribble(true);
+      pointer('pointerdown', 400, 200); pointer('pointermove', 450, 220); pointer('pointerup', 450, 220);
+      setScribble(false);
+      const strokes = ink.strokes.length;
+      undo();
+      const a1 = ink.strokes.length === strokes - 1 && editor.textContent.includes('undo-me');
+      undo();
+      const a2 = !editor.textContent.includes('undo-me');
+      redo(); redo();
+      check('undo and redo walk through typing and drawing together', a1 && a2 && editor.textContent.includes('undo-me') && ink.strokes.length === strokes);
+      // tables
+      editor.focus(); caretIn(editor, true);
+      $('formatBtn').click(); await sleep(30); $('tableBtn').click();
+      let t = editor.querySelector('table');
+      check('insert a table', t && t.rows.length === 3 && t.rows[0].cells.length === 2 && blockAt('TD') === t.rows[0].cells[0] && !$('tableBar').hidden);
+      document.execCommand('insertText', false, 'Day');
+      onEditorKey(new KeyboardEvent('keydown', { key: 'Tab' })); document.execCommand('insertText', false, 'Task');
+      check('Tab moves to the next cell', t.rows[0].cells[1].textContent === 'Task');
+      caretIn(t.rows[2].cells[1], true); onEditorKey(new KeyboardEvent('keydown', { key: 'Tab' }));
+      check('Tab in the last cell adds a row', t.rows.length === 4);
+      tableOp('colRight'); const cols3 = t.rows[0].cells.length === 3; tableOp('delCol'); tableOp('delRow');
+      check('add and delete rows and columns', cols3 && t.rows[0].cells.length === 2 && t.rows.length === 3);
+      undo(); undo();
+      t = editor.querySelector('table');
+      check('table changes can be undone', t && t.rows.length === 4 && t.rows[0].cells.length === 3);
+      redo(); redo();
+      await sleep(600); await save.chain;
+      check('the table is saved', (await api.read_page(pid)).text.includes('<td>Day</td>'));
       titleInput.focus(); type(titleInput, 'Renamed page');
       await sleep(900); await flushTitle();
       const snap = await api.snapshot();
@@ -1245,7 +1443,7 @@
       check('folder colour', (await api.snapshot()).folders.find((f) => f.id === a).color === COLORS[3]);
       await openPage(pid);
       check('reopening a page shows everything', editor.textContent.startsWith('Hello from the smoke test') && margin.textContent === 'Margin note' &&
-        inkSvg.querySelectorAll('path').length === 1 && titleInput.value === 'Renamed page');
+        inkSvg.querySelectorAll('path').length === 2 && !!editor.querySelector('table') && titleInput.value === 'Renamed page');
     } catch (e) {
       steps.push({ name: 'self-test crashed: ' + errText(e) + ' ' + (e && e.stack ? e.stack.split('\n')[1] : ''), ok: false });
     }
