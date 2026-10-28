@@ -44,6 +44,7 @@ class Api:
         return {"notebook": self._nb.snapshot(), "version": VERSION,
                 "prefs": {"font": settings.get("font", "hand"), "lastPage": settings.get("last_page"),
                           "keepRunning": bool(settings.get("keep_running", False)),
+                          "kbTip": settings.get("kb_tip", "on"), "side": settings.get("side", "shown"),
                           "trayAvailable": os.name == "nt"}}
 
     def reload(self):
@@ -65,7 +66,18 @@ class Api:
         self._nb.move_page(page_id, folder_id, index)
 
     def delete_page(self, page_id):
-        self._nb.delete_page(page_id)
+        return self._nb.delete_page(page_id)
+
+    def restore(self, trash_ids):
+        restored = self._nb.restore(trash_ids)
+        return {"restored": restored, "notebook": self._nb.snapshot()}
+
+    def set_title(self, title):
+        """The window's title, so Alt+Tab and screen readers say which page is open."""
+        try:
+            self._window.set_title(((str(title)[:80] + " – ") if title else "") + settings.APP_NAME)
+        except Exception:
+            pass
 
     def create_folder(self, name="New folder", index=None):
         return self._nb.create_folder(name, index)
@@ -80,7 +92,7 @@ class Api:
         self._nb.move_folder(folder_id, index)
 
     def delete_folder(self, folder_id):
-        self._nb.delete_folder(folder_id)
+        return self._nb.delete_folder(folder_id)
 
     def search(self, query):
         return self._nb.search(query)
@@ -90,7 +102,7 @@ class Api:
 
     # app
     def set_pref(self, key, value):
-        if key in ("font", "last_page"):
+        if key in ("font", "last_page", "kb_tip", "side"):
             settings.put(key, value)
         elif key == "keep_running" and self._app:
             return self._app.set_keep_running(bool(value))

@@ -34,7 +34,7 @@ class StoreTest(unittest.TestCase):
         doc = self.nb.read_page(self.nb.snapshot()["folders"][0]["pages"][0]["id"])
         self.assertIn("<h1>Welcome to NiSH Notes!</h1>", doc["text"])
         self.assertTrue(doc["margin"])
-        self.assertTrue((self.root / "Inbox" / "Welcome.html").is_file())
+        self.assertTrue((self.root / "Inbox" / "Welcome to NiSH Notes!.html").is_file())
 
     def test_page_lifecycle(self):
         fid = self.nb.create_folder("School")
@@ -70,7 +70,7 @@ class StoreTest(unittest.TestCase):
         p2 = self.nb.create_page(inbox, "Two")
         self.save(p1, "first")
         self.nb.move_page(p2, inbox, 0)
-        self.assertEqual([p["title"] for p in self.folder("Inbox")["pages"]], ["Two", "Welcome", "One"])
+        self.assertEqual([p["title"] for p in self.folder("Inbox")["pages"]], ["Two", "Welcome to NiSH Notes!", "One"])
         self.nb.move_page(p1, school, 0)
         self.assertEqual([p["title"] for p in self.folder("School")["pages"]], ["One"])
         self.assertEqual(self.text(p1), "first")
@@ -80,7 +80,7 @@ class StoreTest(unittest.TestCase):
         # the order survives a restart
         again = store.Notebook(self.root)
         self.assertEqual([f["name"] for f in again.snapshot()["folders"]], ["School", "Inbox"])
-        self.assertEqual([p["title"] for p in again.snapshot()["folders"][1]["pages"]], ["Two", "Welcome"])
+        self.assertEqual([p["title"] for p in again.snapshot()["folders"][1]["pages"]], ["Two", "Welcome to NiSH Notes!"])
 
     def test_moving_into_folder_with_same_file_name(self):
         a = self.nb.create_folder("A")
@@ -114,7 +114,7 @@ class StoreTest(unittest.TestCase):
         (self.root / "Recipes").mkdir()
         (self.root / "Recipes" / "Pancakes.txt").write_text("eggs, milk", encoding="utf-8")
         (self.root / "Inbox" / "From Notepad.md").write_text("# hi", encoding="utf-8")
-        (self.root / "Inbox" / "Welcome.html").unlink()
+        (self.root / "Inbox" / "Welcome to NiSH Notes!.html").unlink()
         nb = store.Notebook(self.root)
         snap = nb.snapshot()
         self.assertEqual([f["name"] for f in snap["folders"]], ["Inbox", "Recipes"])
@@ -126,7 +126,7 @@ class StoreTest(unittest.TestCase):
     def test_broken_index_is_rebuilt(self):
         (self.root / store.INDEX).write_text("{not json", encoding="utf-8")
         nb = store.Notebook(self.root)
-        self.assertEqual([p["title"] for p in nb.snapshot()["folders"][0]["pages"]], ["Welcome"])
+        self.assertEqual([p["title"] for p in nb.snapshot()["folders"][0]["pages"]], ["Welcome to NiSH Notes!"])
         json.loads((self.root / store.INDEX).read_text(encoding="utf-8"))
 
     def test_windows_file_names(self):
@@ -144,12 +144,16 @@ class StoreTest(unittest.TestCase):
         fid = self.folder("Inbox")["id"]
         pid = self.nb.create_page(fid, "Shopping")
         self.save(pid, "<div>Oat <b>milk</b></div><div>Coffee&nbsp;beans</div>", margin="<div>Tuesday</div>")
-        self.assertEqual(self.nb.search("coffee MILK"), [pid])
-        self.assertEqual(self.nb.search("shopping"), [pid])
-        self.assertEqual(self.nb.search("tea"), [])
-        self.assertEqual(self.nb.search("tuesday"), [pid])
-        self.assertEqual(self.nb.search("milk coffee"), [pid])
-        self.assertEqual(self.nb.search("div"), [])        # tags are not text
+        ids = lambda q: [h["id"] for h in self.nb.search(q)]
+        self.assertEqual(ids("coffee MILK"), [pid])
+        self.assertEqual(ids("shopping"), [pid])
+        self.assertEqual(ids("tea"), [])
+        self.assertEqual(ids("tuesday"), [pid])
+        self.assertEqual(ids("milk coffee"), [pid])
+        self.assertEqual(ids("div"), [])        # tags are not text
+        hit = self.nb.search("coffee")[0]
+        self.assertEqual(hit["hit"].lower(), "coffee")
+        self.assertIn("milk", hit["pre"].lower())
         self.assertEqual(self.nb.search("  "), [])
 
     def test_reads_old_ansi_files(self):
@@ -205,6 +209,47 @@ class StoreTest(unittest.TestCase):
         nb = store.Notebook(self.root)
         pid = next(p["id"] for p in nb.snapshot()["folders"][0]["pages"] if p["title"] == "Saved")
         self.assertEqual(self.text(pid, nb), "<p>Hello</p>")
+
+    def test_recently_deleted_and_put_back(self):
+        fid = self.folder("Inbox")["id"]
+        a = self.nb.create_page(fid, "A")
+        b = self.nb.create_page(fid, "B")
+        self.save(a, "<div>keep me</div>")
+        tid = self.nb.delete_page(a)
+        snap = self.nb.snapshot()
+        self.assertEqual([t["title"] for t in snap["trash"]], ["A"])
+        self.assertEqual([p["title"] for p in self.folder("Inbox")["pages"]], ["Welcome to NiSH Notes!", "B"])
+        self.assertEqual(self.nb.restore(tid), [a])                 # same id, same place
+        self.assertEqual([p["title"] for p in self.folder("Inbox")["pages"]], ["Welcome to NiSH Notes!", "A", "B"])
+        self.assertEqual(self.text(a), "<div>keep me</div>")
+        self.assertEqual(self.nb.snapshot()["trash"], [])
+
+    def test_deleted_folder_comes_back_whole(self):
+        fid = self.nb.create_folder("Music")
+        self.nb.set_folder(fid, color="#A58BD6")
+        pages = [self.nb.create_page(fid, t) for t in ("One", "Two", "Three")]
+        self.save(pages[1], "<div>second</div>")
+        ids = self.nb.delete_folder(fid)
+        self.assertEqual(len(ids), 3)
+        self.assertFalse((self.root / "Music").exists())
+        self.assertEqual(self.nb.restore(ids), pages)
+        f = self.folder("Music")
+        self.assertEqual((f["id"], f["color"]), (fid, "#A58BD6"))
+        self.assertEqual([p["title"] for p in f["pages"]], ["One", "Two", "Three"])
+        self.assertEqual(self.text(pages[1]), "<div>second</div>")
+
+    def test_recently_deleted_survives_restart_and_expires(self):
+        fid = self.folder("Inbox")["id"]
+        tid = self.nb.delete_page(self.nb.create_page(fid, "Old"))
+        (self.root / store.TRASH / "Inbox - From v1.txt").write_text("v1 trash", encoding="utf-8")
+        nb = store.Notebook(self.root)
+        self.assertEqual(sorted(t["title"] for t in nb.snapshot()["trash"]), ["From v1", "Old"])
+        entry = next(t for t in nb.data["trash"] if t["id"] == tid)
+        entry["deleted"] = "2000-01-01T00:00:00+00:00"
+        nb._save_index()
+        nb = store.Notebook(self.root)
+        self.assertEqual([t["title"] for t in nb.snapshot()["trash"]], ["From v1"])
+        self.assertFalse(any(x.name.startswith("Inbox - Old") for x in (self.root / store.TRASH).iterdir()))
 
 
 if __name__ == "__main__":

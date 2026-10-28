@@ -23,6 +23,7 @@ from pathlib import Path
 
 INDEX = "_nishnotes.json"
 TRASH = "_Trash"
+KEEP_DAYS = 30            # pages stay in Recently deleted this long
 TEXT_EXT = (".html", ".htm", ".txt", ".md")
 HTML_EXT = (".html", ".htm")
 COLORS = ["#E3A93E", "#6A9BD1", "#D97B63", "#79AE7F", "#A58BD6", "#8C8A84"]
@@ -204,9 +205,10 @@ class Notebook:
                 pass
             first_run = not self._index_path().exists()
             self._reconcile()
+            self._reconcile_trash()
             if first_run and not self.data["folders"]:
                 f = self._add_folder("Inbox")
-                p = self._add_page(f, "Welcome")
+                p = self._add_page(f, "Welcome to NiSH Notes!")
                 _write_atomic(self._file(f, p), render_page(p["title"], WELCOME, WELCOME_MARGIN, []))
             self._save_index()
             return self.snapshot()
@@ -255,13 +257,52 @@ class Notebook:
                 f["pages"].append({"id": _new_id("p"), "title": file.stem, "file": file.name,
                                    "created": stamp, "updated": stamp})
 
+    def _reconcile_trash(self):
+        """Recently deleted: drop entries whose file is gone or that are older than KEEP_DAYS,
+        and list loose page files left in _Trash by older versions."""
+        trash_dir = self.root / TRASH
+        entries, known = [], set()
+        limit = datetime.datetime.now().astimezone() - datetime.timedelta(days=KEEP_DAYS)
+        for t in self.data.get("trash", []):
+            path = trash_dir / str(t.get("file", ""))
+            if not t.get("file") or not path.is_file():
+                continue
+            try:
+                old = datetime.datetime.fromisoformat(t["deleted"]) < limit
+            except Exception:
+                old = False
+            if old:
+                try:
+                    path.unlink()
+                except OSError:
+                    pass
+                continue
+            known.add(t["file"].lower())
+            entries.append(t)
+        if trash_dir.is_dir():
+            for file in sorted(trash_dir.iterdir(), key=lambda x: x.stat().st_mtime):
+                if file.is_file() and file.suffix.lower() in TEXT_EXT and file.name.lower() not in known:
+                    stamp = datetime.datetime.fromtimestamp(file.stat().st_mtime).astimezone()
+                    folder, _, title = file.stem.partition(" - ")
+                    if not title:
+                        folder, title = "", file.stem
+                    entries.append({"id": _new_id("t"), "title": title, "file": file.name, "folder_id": None,
+                                    "folder_name": folder, "folder_color": None, "folder_index": None, "index": None,
+                                    "deleted": stamp.isoformat(timespec="seconds"),
+                                    "page": {"id": _new_id("p"), "title": title, "created": stamp.isoformat(timespec="seconds"),
+                                             "updated": stamp.isoformat(timespec="seconds")}})
+        self.data["trash"] = entries
+
     def snapshot(self):
         with self.lock:
             return {"root": str(self.root), "folders": [
                 {"id": f["id"], "name": f["name"], "color": f["color"], "open": f["open"],
                  "pages": [{"id": p["id"], "title": p["title"], "created": p["created"],
                             "updated": p["updated"]} for p in f["pages"]]}
-                for f in self.data["folders"]]}
+                for f in self.data["folders"]],
+                "trash": [{"id": t["id"], "title": t["title"], "folder": t.get("folder_name") or "",
+                           "deleted": t["deleted"]} for t in reversed(self.data.get("trash", []))],
+                "keepDays": KEEP_DAYS}
 
     # ---------- lookups ----------
     def _folder(self, folder_id):
@@ -339,14 +380,23 @@ class Notebook:
             self._save_index()
 
     def delete_folder(self, folder_id):
+        """Every page goes to Recently deleted (so the folder can be put back); the empty folder is removed.
+        Returns the ids of the Recently deleted entries."""
         with self.lock:
             f = self._folder(folder_id)
-            trash = self.root / TRASH
-            trash.mkdir(exist_ok=True)
-            stamp = datetime.datetime.now().strftime("%Y-%m-%d %H.%M.%S")
-            shutil.move(str(self.root / f["dir"]), str(trash / self._unique(trash, f"{f['dir']} ({stamp})")))
+            fi = self.data["folders"].index(f)
+            ids = [self._trash_page(f, p, fi, i) for i, p in enumerate(list(f["pages"]))]
+            d = self.root / f["dir"]
+            try:
+                d.rmdir()
+            except OSError:                       # other files in it: keep them, in _Trash
+                trash = self.root / TRASH
+                trash.mkdir(exist_ok=True)
+                stamp = datetime.datetime.now().strftime("%Y-%m-%d %H.%M.%S")
+                shutil.move(str(d), str(trash / self._unique(trash, f"{f['dir']} ({stamp})")))
             self.data["folders"].remove(f)
             self._save_index()
+            return ids
 
     # ---------- pages ----------
     def _add_page(self, f, title, index=None):
@@ -429,18 +479,75 @@ class Notebook:
             dst["pages"].insert(max(0, min(int(index), len(dst["pages"]))), p)
             self._save_index()
 
+    def _trash_page(self, f, p, folder_index, index=None):
+        trash = self.root / TRASH
+        trash.mkdir(exist_ok=True)
+        stem, ext = Path(p["file"]).stem, Path(p["file"]).suffix
+        name = self._unique(trash, f"{f['dir']} - {stem}", ext)
+        shutil.move(str(self._file(f, p)), str(trash / name))
+        entry = {"id": _new_id("t"), "title": p["title"], "file": name, "folder_id": f["id"], "folder_name": f["name"],
+                 "folder_color": f["color"], "folder_index": folder_index, "index": f["pages"].index(p) if index is None else index,
+                 "deleted": now(), "page": {k: p[k] for k in ("id", "title", "created", "updated") if k in p}}
+        f["pages"].remove(p)
+        self.data.setdefault("trash", []).append(entry)
+        return entry["id"]
+
     def delete_page(self, page_id):
+        """Moves the page to Recently deleted. Returns its entry id (for Undo or Put back)."""
         with self.lock:
             f, p = self._page(page_id)
-            trash = self.root / TRASH
-            trash.mkdir(exist_ok=True)
-            stem, ext = Path(p["file"]).stem, Path(p["file"]).suffix
-            shutil.move(str(self._file(f, p)), str(trash / self._unique(trash, f"{f['dir']} - {stem}", ext)))
-            f["pages"].remove(p)
+            tid = self._trash_page(f, p, self.data["folders"].index(f))
             self._save_index()
+            return tid
+
+    def restore(self, trash_ids):
+        """Put pages back where they were. A deleted folder is made again with its name, colour and place.
+        Returns the restored page ids."""
+        if isinstance(trash_ids, str):
+            trash_ids = [trash_ids]
+        restored = []
+        with self.lock:
+            entries = [t for t in self.data.get("trash", []) if t["id"] in set(trash_ids)]
+            entries.sort(key=lambda t: (t.get("index") is None, t.get("index") or 0))
+            made = {}
+            for t in entries:
+                f = next((x for x in self.data["folders"] if x["id"] == t.get("folder_id")), None)
+                if f is None and t.get("folder_id") in made:
+                    f = made[t["folder_id"]]
+                if f is None and t.get("folder_name"):
+                    f = next((x for x in self.data["folders"] if x["name"].lower() == t["folder_name"].lower()), None)
+                    if f is None and t.get("folder_id"):
+                        f = self._add_folder(t["folder_name"], t.get("folder_index"))
+                        f["id"] = t["folder_id"]
+                        if t.get("folder_color"):
+                            f["color"] = t["folder_color"]
+                        made[t["folder_id"]] = f
+                if f is None:
+                    f = self.data["folders"][0] if self.data["folders"] else self._add_folder("Inbox")
+                src = self.root / TRASH / t["file"]
+                ext = Path(t["file"]).suffix
+                stem = safe_name(t.get("title") or Path(t["file"]).stem)
+                name = self._unique(self.root / f["dir"], stem, ext)
+                shutil.move(str(src), str(self.root / f["dir"] / name))
+                page = dict(t.get("page") or {})
+                if any(p["id"] == page.get("id") for x in self.data["folders"] for p in x["pages"]):
+                    page["id"] = _new_id("p")
+                page.setdefault("id", _new_id("p"))
+                page.setdefault("title", t.get("title") or stem)
+                page.setdefault("created", t["deleted"])
+                page.setdefault("updated", t["deleted"])
+                page["file"] = name
+                i = t.get("index")
+                f["pages"].insert(len(f["pages"]) if i is None else max(0, min(int(i), len(f["pages"]))), page)
+                f["open"] = True
+                self.data["trash"].remove(t)
+                restored.append(page["id"])
+            self._save_index()
+            return restored
 
     def search(self, query):
-        """Ids of the pages whose title or text contains every word of the query."""
+        """Pages whose title or text contains every word of the query, each with a short preview
+        around the first match: [{"id", "pre", "hit", "post"}]."""
         words = [w for w in str(query or "").lower().split() if w]
         if not words:
             return []
@@ -455,23 +562,50 @@ class Notebook:
                         text = ""
                     hay = (p["title"] + "\n" + text).lower()
                     if all(w in hay for w in words):
-                        hits.append(p["id"])
+                        hits.append({"id": p["id"], **_preview(text, words)})
         return hits
+
+
+def _preview(text, words, before=34, after=60):
+    """A one-line piece of the text around the first of the words found in it."""
+    flat = re.sub(r"\s+", " ", text.replace("\xa0", " ")).strip()
+    low = flat.lower()
+    best = None
+    for w in words:
+        i = low.find(w)
+        if i >= 0 and (best is None or i < best[0]):
+            best = (i, len(w))
+    if best is None:
+        return {"pre": "", "hit": "", "post": flat[:before + after]}
+    i, n = best
+    a = max(0, i - before)
+    if a:
+        sp = flat.find(" ", a)
+        a = sp + 1 if 0 <= sp < i else a
+    b = min(len(flat), i + n + after)
+    if b < len(flat):
+        sp = flat.rfind(" ", i + n, b)
+        b = sp if sp > i + n else b
+    return {"pre": ("…" if a else "") + flat[a:i], "hit": flat[i:i + n], "post": flat[i + n:b] + ("…" if b < len(flat) else "")}
 
 
 WELCOME = (
     "<h1>Welcome to NiSH Notes!</h1>"
-    "<div>Everything you write is saved by itself.</div><div><br></div>"
+    "<div>Everything you write is saved by itself. The first line of a page is its name.</div><div><br></div>"
     "<h3>Writing</h3>"
     "<ul><li>Click <b>Aa</b> at the top for titles, headings, <b>bold</b>, <i>italic</i>, "
-    "<u>underline</u>, <s>strikethrough</s> and lists.</li>"
+    "<u>underline</u>, <s>strikethrough</s>, lists and tables.</li>"
     "<li>The checklist button makes a to-do list. Click a circle to tick it off.</li>"
     "<li>Write in the narrow column left of the red line for margin notes.</li>"
-    "<li><b>Scribble</b> lets you draw on the page with a pen, a marker and an eraser.</li></ul>"
+    "<li><b>Scribble</b> lets you draw on the page with a pen, a marker and an eraser.</li>"
+    "<li>Undo and Redo (Ctrl+Z, Ctrl+Y) go back through typing and drawing alike.</li></ul>"
     "<div><br></div><h3>Sorting</h3>"
-    "<ul class=\"dashed\"><li>Hover over a folder or page and drag its handle to move it.</li>"
+    "<ul class=\"dashed\"><li>Hover over a folder or page and drag its handle, or use Move up and Move down in its ⋯ menu.</li>"
     "<li>Drop a page on a folder to move it there.</li>"
-    "<li>Right-click a folder or page to rename, recolour or delete it.</li></ul>"
+    "<li>Deleted something by mistake? Click Undo, or find it under Recently deleted.</li></ul>"
+    "<div><br></div><h3>Keyboard</h3>"
+    "<ul class=\"dashed\"><li>Esc leaves the page, F6 moves between page, margin and folders.</li>"
+    "<li>Ctrl+N new page, Ctrl+F search, Ctrl+\\ hide the folders.</li></ul>"
     "<div><br></div><h3>Try it</h3>"
     "<ul class=\"checklist\"><li data-checked=\"\">Open NiSH Notes</li><li>Make a folder</li><li>Write your first page</li></ul>"
 )

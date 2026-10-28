@@ -3,7 +3,7 @@
   'use strict';
 
   const $ = (id) => document.getElementById(id);
-  const tree = $('tree'), titleInput = $('title');
+  const tree = $('tree');
   let editor = $('editor'), margin = $('margin');
   const paper = $('paper'), leaf = $('leaf'), inkSvg = $('ink'), fmt = $('fmt'), menu = $('menu');
   const SVGNS = 'http://www.w3.org/2000/svg';
@@ -151,7 +151,31 @@
     }).then((again) => { if (again) flush(); });
   }
 
-  // ---------- title ----------
+  // ---------- the page name is its first line ----------
+  function firstLine(ed) {
+    for (const n of Array.from((ed || editor).childNodes)) {
+      const t = (n.textContent || '').replace(/\s+/g, ' ').trim();
+      if (t) return t.slice(0, 120);
+    }
+    return '';
+  }
+  function pageTitle() { return firstLine() || 'New page'; }
+  function titleChanged() {
+    const hit = activeId && findPage(activeId); if (!hit) return;
+    const t = pageTitle();
+    if (t === hit.page.title) return;
+    hit.page.title = t;
+    pendingTitle = { id: activeId, title: t };
+    const el = tree.querySelector('[data-page="' + CSS.escape(activeId) + '"] .t'); if (el) el.textContent = t;
+    announceTitle();
+    clearTimeout(renameTimer); renameTimer = setTimeout(flushTitle, 900);
+  }
+  function announceTitle() {
+    const hit = activeId && findPage(activeId);
+    const t = hit ? hit.page.title : '';
+    $('pageName').textContent = t || 'No page open';
+    if (api && api.set_title) api.set_title(t);
+  }
   async function flushTitle() {
     clearTimeout(renameTimer);
     if (pendingTitle && findPage(pendingTitle.id)) {
@@ -165,6 +189,7 @@
   }
 
   // ---------- the folder menu ----------
+  const pagesWord = (n) => n + (n === 1 ? ' page' : ' pages');
   function renderTree() {
     const focused = document.activeElement;
     let focusKey = null;
@@ -173,49 +198,74 @@
       focusKey = pg ? 'p:' + pg.dataset.page : fo ? 'f:' + fo.dataset.folder : null;
     }
     const html = [];
-    for (const f of nb.folders) {
-      const pages = searchHits ? f.pages.filter((p) => searchHits.has(p.id)) : f.pages;
-      if (searchHits && !pages.length) continue;
-      const open = searchHits ? true : f.open;
-      html.push(
-        '<section class="folder' + (open ? ' open' : '') + '" data-folder="' + esc(f.id) + '" style="--fc:' + esc(f.color) + '">' +
-          '<div class="folder-row">' +
-            '<span class="grip" title="Drag to move" aria-hidden="true">' + ICON.grip + '</span>' +
-            '<button type="button" class="folder-head" aria-expanded="' + open + '">' +
-              ICON.chev + '<span class="swatch"></span><span class="folder-name">' + esc(f.name) + '</span>' +
-              '<span class="count">' + f.pages.length + '</span></button>' +
-            '<button type="button" class="row-more" aria-label="Folder options" title="Options">' + ICON.more + '</button>' +
-          '</div>' +
-          '<ul class="pages">' +
-            (pages.length ? pages.map((p) =>
-              '<li class="page' + (p.id === activeId ? ' active' : '') + '" data-page="' + esc(p.id) + '">' +
-                '<span class="grip" title="Drag to move" aria-hidden="true">' + ICON.grip + '</span>' +
-                '<button type="button" class="page-btn"' + (p.id === activeId ? ' aria-current="page"' : '') + '>' +
-                  '<span class="t">' + esc(p.title) + '</span><span class="d">' + esc(fmtShort(p.created)) + '</span></button>' +
-                '<button type="button" class="row-more" aria-label="Page options" title="Options">' + ICON.more + '</button></li>').join('')
-              : '<li class="none">Empty – drop a page here</li>') +
-          '</ul></section>');
+    if (searchHits) {                                 // search: one card per page, with a preview
+      for (const h of searchHits) {
+        const hit = findPage(h.id); if (!hit) continue;
+        html.push('<button type="button" class="result" data-page="' + esc(h.id) + '">' +
+          '<span class="rt"><span class="swatch" style="background:' + esc(hit.folder.color) + '"></span>' + esc(hit.page.title) +
+          '<span class="rf">' + esc(hit.folder.name) + '</span></span>' +
+          '<span class="rs">' + esc(h.pre) + (h.hit ? '<mark>' + esc(h.hit) + '</mark>' : '') + esc(h.post) + '</span></button>');
+      }
+      if (!html.length) html.push('<p class="pages" style="padding:8px 4px;color:var(--muted)">No pages match.</p>');
+    } else {
+      for (const f of nb.folders) {
+        html.push(
+          '<section class="folder' + (f.open ? ' open' : '') + '" data-folder="' + esc(f.id) + '" style="--fc:' + esc(f.color) + '">' +
+            '<div class="folder-row">' +
+              '<span class="grip" title="Drag to move" aria-hidden="true">' + ICON.grip + '</span>' +
+              '<button type="button" class="folder-head" aria-expanded="' + f.open + '" aria-label="' + esc(f.name + ', ' + pagesWord(f.pages.length)) + '">' +
+                ICON.chev + '<span class="swatch"></span><span class="folder-name">' + esc(f.name) + '</span>' +
+                '<span class="count" aria-hidden="true">' + f.pages.length + '</span></button>' +
+              '<button type="button" class="row-more" aria-label="Options for ' + esc(f.name) + '" aria-haspopup="menu" title="Options">' + ICON.more + '</button>' +
+            '</div>' +
+            '<ul class="pages">' +
+              (f.pages.length ? f.pages.map((p) =>
+                '<li class="page' + (p.id === activeId ? ' active' : '') + '" data-page="' + esc(p.id) + '">' +
+                  '<span class="grip" title="Drag to move" aria-hidden="true">' + ICON.grip + '</span>' +
+                  '<button type="button" class="page-btn"' + (p.id === activeId ? ' aria-current="page"' : '') + '>' +
+                    '<span class="t">' + esc(p.title) + '</span><span class="d">' + esc(fmtShort(p.created)) + '</span></button>' +
+                  '<button type="button" class="row-more" aria-label="Options for ' + esc(p.title) + '" aria-haspopup="menu" title="Options">' + ICON.more + '</button></li>').join('')
+                : '<li class="none">Drop a page here</li>') +
+            '</ul></section>');
+      }
+      if (!nb.folders.length) html.push('<p class="pages" style="padding:8px 4px;color:var(--muted)">No folders yet.</p>');
     }
-    if (searchHits && !html.length) html.push('<p class="pages none" style="padding:8px 4px">No pages match.</p>');
-    if (!nb.folders.length) html.push('<p class="pages none" style="padding:8px 4px">No folders yet.</p>');
     tree.innerHTML = html.join('');
+    $('searchCount').textContent = searchHits ? (searchHits.length ? pagesWord(searchHits.length) + (searchHits.length === 1 ? ' matches' : ' match') + ' “' + $('search').value.trim() + '”' : 'No pages match') : '';
+    renderBin();
     if (focusKey) {
       const id = focusKey.slice(2);
-      const el = focusKey[0] === 'p' ? tree.querySelector('[data-page="' + CSS.escape(id) + '"] .page-btn')
+      const el = focusKey[0] === 'p' ? tree.querySelector('[data-page="' + CSS.escape(id) + '"] .page-btn, .result[data-page="' + CSS.escape(id) + '"]')
         : tree.querySelector('[data-folder="' + CSS.escape(id) + '"] .folder-head');
       if (el) el.focus();
     }
   }
 
+  // Recently deleted, at the bottom of the folder menu
+  function renderBin() {
+    const items = nb.trash || [];
+    $('binCount').textContent = items.length;
+    $('binBtn').setAttribute('aria-label', 'Recently deleted, ' + pagesWord(items.length));
+    const list = $('binList');
+    list.innerHTML = items.map((t) => '<div class="bin-item"><span title="' + esc(t.title) + '">' + esc(t.title) + '</span>' +
+      '<button type="button" data-restore="' + esc(t.id) + '" aria-label="Put back ' + esc(t.title) + '">Put back</button></div>').join('') +
+      '<p class="bin-note">' + (items.length ? 'Pages stay here for ' + (nb.keepDays || 30) + ' days, then they are removed for good.' : 'Nothing here.') + '</p>';
+  }
+  $('binBtn').addEventListener('click', () => {
+    const open = $('binList').hidden;
+    $('binList').hidden = !open; $('binBtn').setAttribute('aria-expanded', String(open));
+  });
+  $('binList').addEventListener('click', (e) => { const b = e.target.closest('[data-restore]'); if (b) restore([b.dataset.restore], true); });
+
   function renderHead() {
     const hit = activeId && findPage(activeId);
     $('empty').hidden = !!hit;
     for (const id of ['formatBtn', 'checkBtn', 'scribbleBtn', 'deletePageBtn']) $(id).disabled = !hit;
-    titleInput.disabled = !hit;
-    if (!hit) { titleInput.value = ''; $('folderLabel').textContent = ''; $('date').textContent = ''; return; }
-    $('folderLabel').textContent = hit.folder.name;
-    $('date').textContent = fmtLong(hit.page.created);
-    if (document.activeElement !== titleInput) titleInput.value = hit.page.title;
+    $('folderDot').style.setProperty('--fc', hit ? hit.folder.color : 'transparent');
+    $('crumbSep').hidden = !hit;
+    $('folderLabel').textContent = hit ? hit.folder.name : '';
+    $('date').textContent = hit ? fmtLong(hit.page.created) : '';
+    announceTitle();
   }
 
   // ---------- pages ----------
@@ -225,7 +275,9 @@
   function updateEmpty() {
     for (const el of [editor, margin]) el.classList.toggle('is-empty', !el.textContent && !el.querySelector('li, table'));
   }
-  function loadDoc(doc) {
+  const histStore = new Map();                      // undo history per page, while the app is open
+  function loadDoc(doc, pageId) {
+    if (activeHistId && hist.stack.length) histStore.set(activeHistId, { stack: hist.stack, i: hist.i });
     // A fresh element per page keeps the browser's undo history from reaching into the previous page.
     for (const [old, html] of [[editor, doc.text], [margin, doc.margin]]) {
       const fresh = old.cloneNode(false);
@@ -235,12 +287,22 @@
     }
     bindEditor(editor); bindEditor(margin);
     lastEd = editor;
+    // Pages from before 1.4 kept their name apart from the text: put it on the first line.
+    const hit = pageId && findPage(pageId);
+    if (hit && hit.page.title && !/^(Untitled|New page)( \(\d+\))?$/.test(hit.page.title) && firstLine() !== hit.page.title) {
+      editor.insertAdjacentHTML('afterbegin', '<h1>' + esc(hit.page.title) + '</h1>');
+    }
+    if (hit && !editor.textContent.trim() && !editor.querySelector('li, table')) editor.innerHTML = '<h1><br></h1>';
     ink.strokes = Array.isArray(doc.ink) ? doc.ink : [];
     renderInk(); updateEmpty(); syncInkButtons();
-    histReset(); $('tableBar').hidden = true;
+    activeHistId = pageId || null;
+    const kept = pageId && histStore.get(pageId);
+    if (kept) { hist.stack = kept.stack; hist.i = kept.i; hist.pending = false; hist.stack[hist.i] = snap(); syncUndo(); } else histReset();
     if (ink.on) setEditable(false);
     paper.scrollTop = 0;
+    placeChips();
   }
+  let activeHistId = null;
 
   async function openPage(id, opts) {
     await flushTitle();
@@ -251,12 +313,20 @@
     let doc = { text: '', margin: '', ink: [] };
     try { doc = await call('read_page', id); } catch (e) { /* toast shown */ }
     if (activeId !== id) return false;
-    loadDoc(doc || {});
+    loadDoc(doc || {}, id);
     save.dirty = false;
     renderHead(); renderTree();
     api.set_pref('last_page', id);
-    if (opts && opts.focusTitle) { titleInput.focus(); titleInput.select(); }
+    if (opts && opts.focusTitle) selectFirstLine();
     return true;
+  }
+  function selectFirstLine() {
+    const first = Array.from(editor.childNodes).find((n) => (n.textContent || '').trim() || n.nodeName === 'H1') || editor;
+    editor.focus();
+    const r = document.createRange(); r.selectNodeContents(first);
+    if (!(first.textContent || '').trim()) r.collapse(true);
+    const s = getSelection(); s.removeAllRanges(); s.addRange(r);
+    paper.scrollTop = 0;
   }
 
   function currentFolderId() {
@@ -267,35 +337,16 @@
 
   async function refresh() { nb = await call('snapshot'); }
 
-  let creating = false, wantBody = false;
-  function caretToStart() {
-    editor.focus();
-    const r = document.createRange(); r.selectNodeContents(editor); r.collapse(true);
-    const s = getSelection(); s.removeAllRanges(); s.addRange(r);
-  }
   async function newPage(folderId, title, html) {
     await flushTitle();
-    if (!title) {                 // take typing at once; it becomes the new page's title
-      creating = true;
-      titleInput.disabled = false; titleInput.value = ''; titleInput.focus();
-    }
-    try { return await createPage(folderId, title, html); } finally { creating = false; }
-  }
-  async function createPage(folderId, title, html) {
     if (!(await flush())) { reportSaveError(new Error('The last change could not be saved.'), true); return null; }
     let fid = folderId || currentFolderId();
     if (!fid) fid = await call('create_folder', 'Inbox');
-    const id = await call('create_page', fid, title || 'Untitled', null);
+    const id = await call('create_page', fid, title || 'New page', null);
     if (html) await call('save_page', id, { text: html, margin: '', ink: [] });
     await refresh();
-    if (searchHits) { $('search').value = ''; searchHits = null; }
-    await openPage(id);
-    creating = false;
-    if (!title) {
-      if (titleInput.value.trim()) titleInput.dispatchEvent(new Event('input'));
-      if (wantBody) caretToStart(); else if (!titleInput.value.trim()) { titleInput.focus(); titleInput.select(); }
-    }
-    wantBody = false;
+    if (searchHits) clearSearch();
+    await openPage(id, { focusTitle: true });
     return id;
   }
 
@@ -306,35 +357,70 @@
     return id;
   }
 
-  async function deletePage(id, skipConfirm) {
+  // ---------- deleting: no question first, an Undo notice after ----------
+  const undoBox = { ids: null, timer: 0, left: 0, started: 0, paused: false };
+  function showUndo(text, ids) {
+    clearTimeout(undoBox.timer);
+    undoBox.ids = ids; undoBox.left = 10000; undoBox.paused = false;
+    $('undoText').textContent = text;
+    const t = $('undoToast'); t.hidden = false; t.classList.remove('paused');
+    const bar = t.querySelector('.bar'); bar.style.animation = 'none'; void bar.offsetWidth; bar.style.animation = '';
+    $('kbTip').hidden = true;
+    runUndoTimer();
+  }
+  function runUndoTimer() { undoBox.started = Date.now(); undoBox.timer = setTimeout(hideUndo, undoBox.left); }
+  function pauseUndo() { if (undoBox.paused || $('undoToast').hidden) return; undoBox.paused = true; clearTimeout(undoBox.timer); undoBox.left -= Date.now() - undoBox.started; $('undoToast').classList.add('paused'); $('undoHint').textContent = 'Paused'; }
+  function resumeUndo() { if (!undoBox.paused) return; if ($('undoToast').contains(document.activeElement)) return; undoBox.paused = false; $('undoToast').classList.remove('paused'); $('undoHint').textContent = 'Ctrl+Z'; runUndoTimer(); }
+  function hideUndo() { clearTimeout(undoBox.timer); $('undoToast').hidden = true; undoBox.ids = null; }
+  $('undoToast').addEventListener('mouseenter', pauseUndo);
+  $('undoToast').addEventListener('mouseleave', resumeUndo);
+  $('undoToast').addEventListener('focusin', pauseUndo);
+  $('undoToast').addEventListener('focusout', () => setTimeout(resumeUndo, 0));
+  $('undoDel').addEventListener('click', () => undoDelete());
+  $('undoClose').addEventListener('click', hideUndo);
+  async function undoDelete() { const ids = undoBox.ids; hideUndo(); if (ids) await restore(ids, true); }
+
+  async function restore(ids, open) {
+    await flushTitle(); if (!(await flush())) return;
+    const res = await call('restore', ids);
+    nb = res.notebook;
+    if (open && res.restored.length) await openPage(res.restored[0]); else { renderTree(); renderHead(); }
+    toast(res.restored.length === 1 ? 'Put back.' : pagesWord(res.restored.length) + ' put back.');
+  }
+
+  async function deletePage(id) {
     const hit = findPage(id); if (!hit) return;
-    if (!skipConfirm && !(await dialog({ title: 'Delete page?', ok: 'Delete',
-      text: '“' + hit.page.title + '” will be moved to the _Trash folder inside your notes folder.' }))) return;
-    if (id === activeId) { await flushTitle(); clearTimeout(save.timer); save.dirty = false; await save.chain; }
-    const list = hit.folder.pages, i = list.indexOf(hit.page);
-    await call('delete_page', id);
-    list.splice(i, 1);
+    if (id === activeId) { await flushTitle(); await flush(); }
+    const list = hit.folder.pages, i = list.indexOf(hit.page), title = hit.page.title;
+    const tid = await call('delete_page', id);
+    histStore.delete(id);
+    await refresh();
     if (id === activeId) {
-      const next = list[i] || list[i - 1];
-      activeId = null;
+      const sib = findFolder(hit.folder.id), next = sib && (sib.pages[i] || sib.pages[i - 1]);
+      activeId = null; activeHistId = null;
       if (next) await openPage(next.id); else { loadDoc({ text: '', margin: '', ink: [] }); renderHead(); renderTree(); }
+      const b = next && tree.querySelector('[data-page="' + CSS.escape(next.id) + '"] .page-btn');
+      (b || $('newPageBtn')).focus();
     } else renderTree();
+    showUndo('Deleted “' + title + '”', [tid]);
   }
 
   async function deleteFolder(id) {
     const f = findFolder(id); if (!f) return;
-    const n = f.pages.length;
-    if (!(await dialog({ title: 'Delete folder?', ok: 'Delete', text: '“' + f.name + '”' + (n ? ' and its ' + n + (n === 1 ? ' page' : ' pages') : '') +
-      ' will be moved to the _Trash folder inside your notes folder.' }))) return;
     const hadActive = activeId && f.pages.some((p) => p.id === activeId);
-    if (hadActive) { await flushTitle(); clearTimeout(save.timer); save.dirty = false; await save.chain; }
-    await call('delete_folder', id);
-    nb.folders.splice(nb.folders.indexOf(f), 1);
+    if (hadActive) { await flushTitle(); await flush(); }
+    const name = f.name, n = f.pages.length;
+    const ids = await call('delete_folder', id);
+    f.pages.forEach((p) => histStore.delete(p.id));
+    await refresh();
     if (hadActive) {
-      activeId = null;
+      activeId = null; activeHistId = null;
       const first = nb.folders.find((x) => x.pages.length);
       if (first) await openPage(first.pages[0].id); else { loadDoc({ text: '', margin: '', ink: [] }); renderHead(); renderTree(); }
     } else renderTree();
+    const h = tree.querySelector('.folder-head'); (h || $('newFolderBtn')).focus();
+    if (n) showUndo('Deleted “' + name + '” and ' + pagesWord(n), ids);
+    else toast('Deleted “' + name + '”.');
   }
 
   async function movePage(id, folderId, index) {
@@ -348,6 +434,13 @@
     renderTree(); renderHead();
     try { await call('move_page', id, folderId, index); } catch (e) { await refresh(); renderTree(); renderHead(); }
   }
+  function nudgePage(id, d) {
+    const hit = findPage(id); if (!hit) return;
+    const i = hit.folder.pages.indexOf(hit.page);
+    if (d < 0 && i > 0) movePage(id, hit.folder.id, i - 1);
+    else if (d > 0 && i < hit.folder.pages.length - 1) movePage(id, hit.folder.id, i + 2);
+    setTimeout(() => { const b = tree.querySelector('[data-page="' + CSS.escape(id) + '"] .page-btn'); if (b) b.focus(); }, 0);
+  }
 
   async function moveFolder(id, index) {
     const f = findFolder(id); if (!f) return;
@@ -357,6 +450,11 @@
     nb.folders.splice(from, 1); nb.folders.splice(index, 0, f);
     renderTree();
     try { await call('move_folder', id, index); } catch (e) { await refresh(); renderTree(); }
+  }
+  function nudgeFolder(id, d) {
+    const i = nb.folders.findIndex((f) => f.id === id);
+    if (d < 0 && i > 0) moveFolder(id, i - 1); else if (d > 0 && i < nb.folders.length - 1) moveFolder(id, i + 2);
+    setTimeout(() => { const h = tree.querySelector('[data-folder="' + CSS.escape(id) + '"] .folder-head'); if (h) h.focus(); }, 0);
   }
 
   function toggleFolder(id) {
@@ -371,7 +469,7 @@
 
   async function setColor(id, color) {
     const f = findFolder(id); if (!f) return;
-    f.color = color; renderTree();
+    f.color = color; renderTree(); renderHead();
     await call('set_folder', id, color, null);
   }
 
@@ -406,31 +504,27 @@
     });
   }
 
-  function startRenamePage(id) {
-    const btn = tree.querySelector('[data-page="' + CSS.escape(id) + '"] .page-btn');
-    const hit = findPage(id); if (!btn || !hit) return;
-    inlineInput(btn, hit.page.title, async (title) => {
-      if (title && title !== hit.page.title) {
-        if (pendingTitle && pendingTitle.id === id) { clearTimeout(renameTimer); pendingTitle = null; }
-        try { hit.page.title = await call('rename_page', id, title); } catch (e) { /* toast shown */ }
-      }
-      renderTree(); renderHead();
-      const b = tree.querySelector('[data-page="' + CSS.escape(id) + '"] .page-btn'); if (b) b.focus();
-    });
+  // A page is renamed by changing its first line.
+  async function startRenamePage(id) {
+    if (id !== activeId) await openPage(id);
+    selectFirstLine();
   }
 
-  // ---------- menus and dialogs ----------
-  function openMenu(x, y, items) {
+  // ---------- menus (arrow keys move, Esc goes back to where you were) ----------
+  let menuOpener = null;
+  function openMenu(x, y, items, opener) {
     closeFormat();
+    menuOpener = opener || document.activeElement;
     menu.innerHTML = '';
     for (const it of items) {
-      if (it === '-') { menu.appendChild(document.createElement('hr')); continue; }
+      if (it === '-') { const hr = document.createElement('hr'); hr.setAttribute('role', 'separator'); menu.appendChild(hr); continue; }
       if (it.colors) {
         const row = document.createElement('div'); row.className = 'colors'; row.setAttribute('role', 'group'); row.setAttribute('aria-label', 'Folder colour');
         for (const c of COLORS) {
           const b = document.createElement('button'); b.type = 'button'; b.style.background = c; b.setAttribute('aria-label', 'Colour ' + c);
-          b.setAttribute('aria-pressed', String(c.toLowerCase() === (it.current || '').toLowerCase()));
-          b.addEventListener('click', () => { closeMenu(); it.colors(c); });
+          b.setAttribute('role', 'menuitemradio');
+          b.setAttribute('aria-checked', String(c.toLowerCase() === (it.current || '').toLowerCase()));
+          b.addEventListener('click', () => { closeMenu(true); it.colors(c); });
           row.appendChild(b);
         }
         menu.appendChild(row); continue;
@@ -439,18 +533,39 @@
       const b = document.createElement('button'); b.type = 'button'; b.className = 'item' + (it.danger ? ' danger-item' : '');
       b.setAttribute('role', it.checked == null ? 'menuitem' : 'menuitemcheckbox');
       if (it.checked != null) b.setAttribute('aria-checked', String(!!it.checked));
-      b.textContent = it.label;
+      if (it.disabled) b.disabled = true;
+      const label = document.createElement('span'); label.className = 'label'; label.textContent = it.label; b.appendChild(label);
+      if (it.keys) { const k = document.createElement('kbd'); k.textContent = it.keys; b.appendChild(k); b.setAttribute('aria-keyshortcuts', it.aria || it.keys); }
       if (it.checked) b.insertAdjacentHTML('beforeend', ICON.check);
-      b.addEventListener('click', () => { closeMenu(); it.run(); });
+      b.addEventListener('click', () => { const back = it.keepFocus; closeMenu(!back); it.run(); });
       menu.appendChild(b);
     }
     menu.hidden = false;
     const r = menu.getBoundingClientRect();
     menu.style.left = Math.max(8, Math.min(x, innerWidth - r.width - 8)) + 'px';
     menu.style.top = Math.max(8, Math.min(y, innerHeight - r.height - 8)) + 'px';
-    const first = menu.querySelector('button'); if (first) first.focus();
+    const first = menu.querySelector('button:not(:disabled)'); if (first) first.focus();
   }
-  function closeMenu() { menu.hidden = true; }
+  function closeMenu(returnFocus) {
+    if (menu.hidden) return;
+    menu.hidden = true;
+    if (returnFocus && menuOpener && document.contains(menuOpener) && menuOpener.focus) menuOpener.focus();
+    menuOpener = null;
+  }
+  menu.addEventListener('keydown', (e) => {
+    const items = Array.from(menu.querySelectorAll('button:not(:disabled)'));
+    const i = items.indexOf(document.activeElement);
+    let j = null;
+    if (e.key === 'ArrowDown') j = (i + 1) % items.length;
+    else if (e.key === 'ArrowUp') j = (i - 1 + items.length) % items.length;
+    else if (e.key === 'ArrowRight' && document.activeElement.parentNode.classList.contains('colors')) j = Math.min(i + 1, items.length - 1);
+    else if (e.key === 'ArrowLeft' && document.activeElement.parentNode.classList.contains('colors')) j = Math.max(i - 1, 0);
+    else if (e.key === 'Home') j = 0;
+    else if (e.key === 'End') j = items.length - 1;
+    else if (e.key === 'Escape') { e.preventDefault(); e.stopPropagation(); closeMenu(true); return; }
+    else if (e.key === 'Tab') { e.preventDefault(); closeMenu(true); return; }
+    if (j !== null) { e.preventDefault(); items[j].focus(); }
+  });
 
   let dialogState = null;
   function closeDialog(value) { if (dialogState) dialogState.done(value); }
@@ -480,26 +595,34 @@
     });
   }
 
-  function folderMenu(id, x, y) {
+  function folderMenu(id, x, y, opener) {
     const f = findFolder(id); if (!f) return;
+    const i = nb.folders.indexOf(f);
     openMenu(x, y, [
       { label: 'New page here', run: () => newPage(id) },
-      { label: 'Rename folder', run: () => startRenameFolder(id) },
+      { label: 'Rename', keys: 'F2', run: () => startRenameFolder(id) },
       { colors: (c) => setColor(id, c), current: f.color },
       '-',
-      { label: 'Delete folder…', danger: true, run: () => deleteFolder(id) },
-    ]);
+      { label: 'Move up', keys: 'Alt+↑', aria: 'Alt+ArrowUp', disabled: i === 0, run: () => nudgeFolder(id, -1) },
+      { label: 'Move down', keys: 'Alt+↓', aria: 'Alt+ArrowDown', disabled: i === nb.folders.length - 1, run: () => nudgeFolder(id, 1) },
+      '-',
+      { label: 'Delete folder', keys: 'Del', aria: 'Delete', danger: true, run: () => deleteFolder(id) },
+    ], opener);
   }
 
-  function pageMenu(id, x, y) {
+  function pageMenu(id, x, y, opener) {
     const hit = findPage(id); if (!hit) return;
+    const i = hit.folder.pages.indexOf(hit.page);
     const others = nb.folders.filter((f) => f !== hit.folder).slice(0, 8);
     openMenu(x, y, [
-      { label: 'Rename page', run: () => startRenamePage(id) },
+      { label: 'Rename', keys: 'F2', run: () => startRenamePage(id) },
+      { label: 'Move up', keys: 'Alt+↑', aria: 'Alt+ArrowUp', disabled: i === 0, run: () => nudgePage(id, -1) },
+      { label: 'Move down', keys: 'Alt+↓', aria: 'Alt+ArrowDown', disabled: i === hit.folder.pages.length - 1, run: () => nudgePage(id, 1) },
+      ...(others.length ? ['-'] : []),
       ...others.map((f) => ({ label: 'Move to ' + f.name, run: () => movePage(id, f.id, f.pages.length) })),
       '-',
-      { label: 'Delete page…', danger: true, run: () => deletePage(id) },
-    ]);
+      { label: 'Delete page', keys: 'Del', aria: 'Delete', danger: true, run: () => deletePage(id) },
+    ], opener);
   }
 
   function moreMenu() {
@@ -524,18 +647,19 @@
     }
     items.push({ note: 'Notes are saved in: ' + nb.root });
     items.push({ note: 'NiSH Notes ' + version });
-    openMenu(r.right - 240, r.bottom + 6, items);
+    openMenu(r.right - 240, r.bottom + 6, items, $('moreBtn'));
   }
   function applyFont(font) {
     document.body.classList.toggle('font-clean', font === 'clean');
     document.body.classList.toggle('font-hand', font !== 'clean');
+    queueChips();
   }
 
   async function changeFolder() {
     await flushTitle(); if (!(await flush())) return;
     const snap = await call('choose_notes_folder');
     if (!snap) return;
-    nb = snap; activeId = null; searchHits = null; $('search').value = '';
+    nb = snap; activeId = null; activeHistId = null; histStore.clear(); clearSearch(true);
     const first = nb.folders.find((f) => f.pages.length);
     if (first) await openPage(first.pages[0].id); else { loadDoc({ text: '', margin: '', ink: [] }); renderHead(); renderTree(); }
     toast('Now using ' + nb.root);
@@ -544,6 +668,7 @@
   async function reloadFromDisk() {
     await flushTitle(); if (!(await flush())) return;
     nb = await call('reload');
+    histStore.clear(); activeHistId = null;
     const keep = activeId && findPage(activeId) ? activeId : null;
     activeId = null;
     const first = nb.folders.find((f) => f.pages.length);
@@ -666,11 +791,13 @@
     const more = e.target.closest('.row-more');
     if (more) {
       const r = more.getBoundingClientRect(), li = more.closest('.page');
-      if (li) pageMenu(li.dataset.page, r.left, r.bottom + 4); else folderMenu(more.closest('.folder').dataset.folder, r.left, r.bottom + 4);
+      if (li) pageMenu(li.dataset.page, r.left, r.bottom + 4, more); else folderMenu(more.closest('.folder').dataset.folder, r.left, r.bottom + 4, more);
       return;
     }
+    const result = e.target.closest('.result');
+    if (result) { openFromList(result.dataset.page); return; }
     const pageBtn = e.target.closest('.page-btn');
-    if (pageBtn) { const id = pageBtn.closest('.page').dataset.page; if (id !== activeId) openPage(id); return; }
+    if (pageBtn) { openFromList(pageBtn.closest('.page').dataset.page); return; }
     const head = e.target.closest('.folder-head');
     if (head) toggleFolder(head.closest('.folder').dataset.folder);
   });
@@ -685,8 +812,9 @@
     if (e.target.closest('.rename')) return;
     const page = e.target.closest('.page'), folder = e.target.closest('.folder');
     e.preventDefault();
-    if (page && page.dataset.page) pageMenu(page.dataset.page, e.clientX, e.clientY);
-    else if (folder) folderMenu(folder.dataset.folder, e.clientX, e.clientY);
+    const btn = e.target.closest('button');
+    if (page && page.dataset.page) pageMenu(page.dataset.page, e.clientX, e.clientY, btn);
+    else if (folder) folderMenu(folder.dataset.folder, e.clientX, e.clientY, btn);
   });
   tree.addEventListener('keydown', (e) => {
     if (e.target.classList.contains('rename')) return;
@@ -697,23 +825,17 @@
     if (e.key === 'Delete') { e.preventDefault(); if (page) deletePage(page.dataset.page); else if (head) deleteFolder(fid); }
     if (e.key === 'ContextMenu' || (e.shiftKey && e.key === 'F10')) {
       e.preventDefault(); const r = e.target.getBoundingClientRect();
-      if (page) pageMenu(page.dataset.page, r.left + 20, r.bottom); else if (head) folderMenu(fid, r.left + 20, r.bottom);
+      if (page) pageMenu(page.dataset.page, r.left + 20, r.bottom, e.target); else if (head) folderMenu(fid, r.left + 20, r.bottom, e.target);
     }
     if (e.altKey && (e.key === 'ArrowUp' || e.key === 'ArrowDown') && !searchHits) {   // move with the keyboard
       e.preventDefault();
-      const up = e.key === 'ArrowUp';
-      if (page) {
-        const hit = findPage(page.dataset.page), i = hit.folder.pages.indexOf(hit.page);
-        if (up && i > 0) movePage(hit.page.id, hit.folder.id, i - 1);
-        else if (!up && i < hit.folder.pages.length - 1) movePage(hit.page.id, hit.folder.id, i + 2);
-      } else if (head) {
-        const i = nb.folders.findIndex((f) => f.id === fid);
-        if (up && i > 0) moveFolder(fid, i - 1); else if (!up && i < nb.folders.length - 1) moveFolder(fid, i + 2);
-      }
+      const d = e.key === 'ArrowUp' ? -1 : 1;
+      if (page) nudgePage(page.dataset.page, d); else if (head) nudgeFolder(fid, d);
       return;
     }
     if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
-      const all = Array.from(tree.querySelectorAll('.folder-head, .folder.open .page-btn'));
+      if (e.key === 'ArrowUp' && e.target === tree.querySelector('.result, .folder-head')) { e.preventDefault(); $('search').focus(); return; }
+      const all = Array.from(tree.querySelectorAll('.result, .folder-head, .folder.open .page-btn'));
       const i = all.indexOf(e.target);
       if (i >= 0) { e.preventDefault(); const next = all[i + (e.key === 'ArrowDown' ? 1 : -1)]; if (next) next.focus(); }
     }
@@ -721,20 +843,21 @@
 
   // ---------- writing: the two columns ----------
   function bindEditor(el) {
-    el.addEventListener('focus', () => { lastEd = el; });
+    el.addEventListener('focus', () => { lastEd = el; if (Date.now() - lastKeyNav < 400) showKbTip(); });
     el.addEventListener('input', (e) => {
       if (e.inputType === 'insertParagraph') {           // a new checklist line starts unticked
         const li = blockAt('LI');
         if (li && li.hasAttribute('data-checked') && !li.textContent.trim()) li.removeAttribute('data-checked');
       }
       updateEmpty(); changed(); histTyping(); if (!fmt.hidden) syncFormat();
+      if (el === editor) { titleChanged(); queueChips(); }
     });
     el.addEventListener('beforeinput', (e) => {         // the browser's own undo would skip the drawing
       if (e.inputType === 'historyUndo' || e.inputType === 'historyRedo') { e.preventDefault(); if (e.inputType === 'historyUndo') undo(); else redo(); }
     });
     el.addEventListener('contextmenu', (e) => {
       const td = e.target.closest && e.target.closest('td');
-      if (td && el === editor && !ink.on) { e.preventDefault(); caretIn(td, true); tableMenu(e.clientX, e.clientY); }
+      if (td && el === editor && !ink.on) { e.preventDefault(); caretIn(td, true); tableMenu(e.clientX, e.clientY, el); }
     });
     el.addEventListener('paste', (e) => {
       const cd = e.clipboardData; if (!cd) return;
@@ -795,7 +918,16 @@
     return null;
   }
   function ensureFocus() {
-    if (activeEd()) return;
+    if (fmtSaved && !fmt.hidden && fmt.contains(document.activeElement)) {   // the Aa panel has the keyboard
+      fmtSaved.ed.focus({ preventScroll: true });
+      const s = getSelection(); s.removeAllRanges(); s.addRange(fmtSaved.range);
+      return;
+    }
+    if (activeEd()) {
+      const ed = activeEd();
+      if (document.activeElement !== ed) { const r = getSelection().getRangeAt(0).cloneRange(); ed.focus({ preventScroll: true }); const s = getSelection(); s.removeAllRanges(); s.addRange(r); }
+      return;
+    }
     const ed = document.contains(lastEd) ? lastEd : editor;
     ed.focus();
     const r = document.createRange(); r.selectNodeContents(ed); r.collapse(false);
@@ -809,7 +941,7 @@
     document.execCommand(cmd, false, val);
     afterEdit(); histCommit();
   }
-  function afterEdit() { updateEmpty(); changed(); if (!fmt.hidden) syncFormat(); }
+  function afterEdit() { updateEmpty(); changed(); if (!fmt.hidden) syncFormat(); queueChips(); titleChanged(); }
   function setBlock(tag) { exec('formatBlock', tag === 'div' ? 'div' : tag); }
   function setList(kind) {
     if (!activeId || ink.on) return;
@@ -862,6 +994,13 @@
 
   function onEditorKey(e) {
     const ctrl = e.ctrlKey || e.metaKey;
+    if (e.key === 'Escape' && menu.hidden && fmt.hidden && !ink.on && !e.shiftKey) {     // leave the page (no keyboard trap)
+      e.preventDefault(); e.stopPropagation();
+      hideKbTip();
+      const tool = Array.from(document.querySelectorAll('.head-tools .tool')).find((b) => !b.disabled);
+      if (tool) tool.focus();
+      return;
+    }
     if (e.key === 'Tab' && !ctrl && !e.altKey) {
       e.preventDefault();
       const td = blockAt('TD');
@@ -892,10 +1031,16 @@
   }
 
   // ---------- the Aa popover ----------
-  function openFormat() {
+  let fmtSaved = null;
+  function saveFmtSel() {
+    const ed = activeEd(), s = getSelection();
+    fmtSaved = ed && s.rangeCount ? { ed, range: s.getRangeAt(0).cloneRange() } : null;
+  }
+  function openFormat(fromKeyboard) {
     if (!activeId || ink.on) return;
     closeMenu();
     ensureFocus();
+    saveFmtSel();
     const r = $('formatBtn').getBoundingClientRect();
     fmt.hidden = false;
     const w = fmt.getBoundingClientRect().width;
@@ -903,12 +1048,34 @@
     fmt.style.top = (r.bottom + 8) + 'px';
     $('formatBtn').setAttribute('aria-expanded', 'true');
     syncFormat();
+    if (fromKeyboard) (fmt.querySelector('[data-block][aria-current="true"]') || fmt.querySelector('button')).focus();
   }
-  function closeFormat() { fmt.hidden = true; $('formatBtn').setAttribute('aria-expanded', 'false'); }
+  function closeFormat(backToText) {
+    if (fmt.hidden) return;
+    const hadKeys = fmt.contains(document.activeElement);
+    fmt.hidden = true; $('formatBtn').setAttribute('aria-expanded', 'false');
+    if ((backToText || hadKeys) && fmtSaved && document.contains(fmtSaved.ed)) {
+      fmtSaved.ed.focus({ preventScroll: true });
+      const s = getSelection(); s.removeAllRanges(); s.addRange(fmtSaved.range);
+    }
+  }
+  fmt.addEventListener('keydown', (e) => {
+    const items = Array.from(fmt.querySelectorAll('button:not(:disabled)'));
+    const i = items.indexOf(document.activeElement);
+    let j = null;
+    if (e.key === 'ArrowDown' || e.key === 'ArrowRight') j = (i + 1) % items.length;
+    else if (e.key === 'ArrowUp' || e.key === 'ArrowLeft') j = (i - 1 + items.length) % items.length;
+    else if (e.key === 'Home') j = 0;
+    else if (e.key === 'End') j = items.length - 1;
+    else if (e.key === 'Tab') j = (i + (e.shiftKey ? -1 : 1) + items.length) % items.length;
+    else if (e.key === 'Escape') { e.preventDefault(); e.stopPropagation(); closeFormat(true); return; }
+    if (j !== null) { e.preventDefault(); items[j].focus(); }
+  });
   function syncFormat() {
     const block = currentBlock(), list = currentList();
     fmt.querySelectorAll('[data-block]').forEach((b) => b.setAttribute('aria-current', String(b.dataset.block === block && !list)));
-    fmt.querySelectorAll('[data-mark]').forEach((b) => b.setAttribute('aria-pressed', String(!!document.queryCommandState(b.dataset.mark))));
+    const marks = { bold: 'B,STRONG', italic: 'I,EM', underline: 'U', strikeThrough: 'S,STRIKE,DEL' };   // headings are bold by nature: only real marks count
+    fmt.querySelectorAll('[data-mark]').forEach((b) => b.setAttribute('aria-pressed', String(!!marks[b.dataset.mark].split(',').some((t) => blockAt(t)))));
     fmt.querySelectorAll('[data-list]').forEach((b) => b.setAttribute('aria-pressed', String(!!list && list.kind === b.dataset.list)));
     fmt.querySelectorAll('[data-indent]').forEach((b) => { b.disabled = !list; });
     $('tableBtn').disabled = activeEd() === margin || !!blockAt('TABLE');
@@ -916,15 +1083,17 @@
   fmt.addEventListener('mousedown', (e) => e.preventDefault());          // keep the text selection
   fmt.addEventListener('click', (e) => {
     const b = e.target.closest('button'); if (!b) return;
+    const kb = e.detail === 0 && fmt.contains(document.activeElement);
+    if (b.id === 'tableBtn') { const k = kb; if (k) ensureFocus(); fmt.hidden = true; $('formatBtn').setAttribute('aria-expanded', 'false'); insertTable(); return; }
     if (b.dataset.block) setBlock(b.dataset.block);
     else if (b.dataset.mark) exec(b.dataset.mark);
     else if (b.dataset.list) setList(b.dataset.list);
     else if (b.dataset.indent) indent(b.dataset.indent === 'indent');
-    else if (b.id === 'tableBtn') { closeFormat(); insertTable(); }
+    if (kb && !fmt.hidden) { saveFmtSel(); syncFormat(); b.focus(); }      // keep working from the keyboard
   });
   document.addEventListener('selectionchange', () => { if (!fmt.hidden) syncFormat(); });
   $('formatBtn').addEventListener('mousedown', (e) => e.preventDefault());
-  $('formatBtn').addEventListener('click', () => { if (fmt.hidden) openFormat(); else closeFormat(); });
+  $('formatBtn').addEventListener('click', (e) => { if (fmt.hidden) openFormat(e.detail === 0); else closeFormat(); });
   $('checkBtn').addEventListener('mousedown', (e) => e.preventDefault());
   $('checkBtn').addEventListener('click', () => setList('check'));
 
@@ -961,7 +1130,7 @@
     const st = hist.stack[j];
     editor.innerHTML = st.text; margin.innerHTML = st.margin; ink.strokes = st.ink.slice();
     renderInk(); updateEmpty(); restoreCaret(st.caret);
-    changed(); syncUndo(); placeTableBar();
+    changed(); syncUndo(); placeChips();
     if (!fmt.hidden) syncFormat();
     return true;
   }
@@ -1007,7 +1176,7 @@
     document.execCommand('insertHTML', false, '<table data-new=""><tbody>' + row.repeat(rows || 3) + '</tbody></table><div><br></div>');
     const t = editor.querySelector('table[data-new]');
     if (t) { t.removeAttribute('data-new'); caretIn(t.rows[0].cells[0], false); }
-    afterEdit(); histCommit(); placeTableBar();
+    afterEdit(); histCommit(); placeChips();
   }
   function tableOp(op) {
     const td = blockAt('TD'); if (!td) return;
@@ -1035,7 +1204,7 @@
       table.remove();
       if (after) caretIn(after, false); else caretIn(editor, true);
     }
-    afterEdit(); histCommit(); placeTableBar();
+    afterEdit(); histCommit(); placeChips();
   }
   function moveCell(td, dir) {
     const cells = Array.from(td.closest('table').querySelectorAll('td'));
@@ -1047,9 +1216,11 @@
       return;
     }
     caretIn(cells[i], true);
-    placeTableBar();
+    placeChips();
   }
-  function tableMenu(x, y) {
+  function tableMenu(x, y, opener) {
+    const done = () => { if (opener) opener.setAttribute('aria-expanded', 'false'); };
+    setTimeout(() => { const mo = new MutationObserver(() => { if (menu.hidden) { done(); mo.disconnect(); } }); mo.observe(menu, { attributes: true, attributeFilter: ['hidden'] }); }, 0);
     openMenu(x, y, [
       { label: 'Add row above', run: () => tableOp('rowAbove') },
       { label: 'Add row below', run: () => tableOp('rowBelow') },
@@ -1059,24 +1230,36 @@
       { label: 'Delete row', run: () => tableOp('delRow') },
       { label: 'Delete column', run: () => tableOp('delCol') },
       { label: 'Delete table', danger: true, run: () => tableOp('delTable') },
-    ]);
+    ], opener);
   }
-  // A small bar of table actions appears above the table while the caret is in it.
-  function placeTableBar() {
-    const bar = $('tableBar');
-    const td = !ink.on && document.activeElement === editor ? blockAt('TD') : null;
-    if (!td) { bar.hidden = true; return; }
-    const tr = td.closest('table').getBoundingClientRect(), pr = paper.getBoundingClientRect(), sr = bar.parentNode.getBoundingClientRect();
-    if (tr.bottom < pr.top + 20 || tr.top > pr.bottom - 20) { bar.hidden = true; return; }
-    bar.hidden = false;
-    bar.style.top = Math.max(pr.top - sr.top + 4, tr.top - sr.top - 40) + 'px';
-    bar.style.left = Math.max(8, tr.right - sr.left - bar.offsetWidth) + 'px';
+  // Each table gets a small handle in the margin, next to its first row.
+  const TABLE_ICON = '<svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3.5" y="5" width="17" height="14" rx="1.5"/><path d="M3.5 9.7h17M3.5 14.3h17M12 5v14"/></svg><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m6 9 6 6 6-6"/></svg>';
+  let chipsQueued = false;
+  function queueChips() { if (chipsQueued) return; chipsQueued = true; requestAnimationFrame(() => { chipsQueued = false; placeChips(); }); }
+  function placeChips() {
+    const box = $('chips'); if (!box) return;
+    const tables = Array.from(editor.querySelectorAll('table'));
+    while (box.children.length > tables.length) box.lastChild.remove();
+    tables.forEach((t, i) => {
+      let b = box.children[i];
+      if (!b) {
+        b = document.createElement('button'); b.type = 'button'; b.className = 'chip'; b.innerHTML = TABLE_ICON;
+        b.setAttribute('aria-haspopup', 'menu'); b.title = 'Table: add or remove rows and columns';
+        b.addEventListener('mousedown', (e) => e.preventDefault());
+        b.addEventListener('click', () => {
+          const table = editor.querySelectorAll('table')[Array.from(box.children).indexOf(b)]; if (!table) return;
+          if (!blockAt('TD') || blockAt('TABLE') !== table) caretIn(table.rows[0].cells[0], false);
+          const r = b.getBoundingClientRect();
+          b.setAttribute('aria-expanded', 'true');
+          tableMenu(r.left, r.bottom + 4, b);
+        });
+        box.appendChild(b);
+      }
+      b.setAttribute('aria-label', 'Table ' + (i + 1) + ' options');
+      b.style.top = (editor.offsetTop + t.offsetTop + 3) + 'px';
+    });
   }
-  $('tableBar').addEventListener('mousedown', (e) => e.preventDefault());
-  $('tableBar').addEventListener('click', (e) => { const b = e.target.closest('button[data-op]'); if (b) tableOp(b.dataset.op); });
-  document.addEventListener('selectionchange', placeTableBar);
-  paper.addEventListener('scroll', placeTableBar);
-  window.addEventListener('resize', placeTableBar);
+  window.addEventListener('resize', queueChips);
 
   // ---------- Scribble ----------
   function strokePath(s) {
@@ -1193,7 +1376,7 @@
     $('inkBar').hidden = !on;
     $('scribbleBtn').setAttribute('aria-pressed', String(on));
     setEditable(!on);
-    placeTableBar();
+    placeChips();
     if (on) { if (document.activeElement && document.activeElement.blur) document.activeElement.blur(); syncInkButtons(); $('inkBar').querySelector('[aria-pressed="true"]').focus(); }
     else { flush(); }
   }
@@ -1214,43 +1397,82 @@
     $('scribbleBtn').addEventListener('click', () => setScribble(!ink.on));
   })();
 
-  // ---------- page header ----------
-  titleInput.addEventListener('input', () => {
-    if (creating) return;
-    const hit = activeId && findPage(activeId); if (!hit) return;
-    hit.page.title = titleInput.value.trim() || 'Untitled';
-    pendingTitle = { id: activeId, title: hit.page.title };
-    renderTree();
-    clearTimeout(renameTimer); renameTimer = setTimeout(flushTitle, 600);
-  });
-  titleInput.addEventListener('keydown', (e) => {
-    if (e.key === 'Enter' || e.key === 'ArrowDown') {
-      e.preventDefault();
-      if (creating) wantBody = true; else caretToStart();
-    }
-  });
-  titleInput.addEventListener('blur', () => {
-    flushTitle();
-    const hit = activeId && findPage(activeId); if (hit && !titleInput.value.trim()) titleInput.value = hit.page.title;
-  });
-
+  // ---------- search ----------
+  function clearSearch(keepText) {
+    if (!keepText) $('search').value = '';
+    searchHits = null; renderTree();
+  }
   $('search').addEventListener('input', () => {
     clearTimeout(searchTimer);
     searchTimer = setTimeout(async () => {
       const q = $('search').value.trim();
-      if (!q) { searchHits = null; renderTree(); return; }
+      if (!q) { clearSearch(true); return; }
       await flush();
       const hits = await call('search', q);
-      if ($('search').value.trim() === q) { searchHits = new Set(hits); renderTree(); }
+      if ($('search').value.trim() === q) { searchHits = hits; renderTree(); }
     }, 200);
   });
   $('search').addEventListener('keydown', (e) => {
-    if (e.key === 'Escape') { $('search').value = ''; searchHits = null; renderTree(); }
-    if (e.key === 'Enter') { const b = tree.querySelector('.page-btn'); if (b) b.click(); }
+    if (e.key === 'Escape' && $('search').value) { e.stopPropagation(); clearSearch(); }
+    if (e.key === 'Enter') { const b = tree.querySelector('.result, .page-btn'); if (b) b.click(); }
+    if (e.key === 'ArrowDown') { const b = tree.querySelector('.result, .folder-head'); if (b) { e.preventDefault(); b.focus(); } }
   });
+  async function openFromList(id) {
+    if (id !== activeId) await openPage(id);
+    if (narrow() && document.body.classList.contains('side-shown')) { setSide(false); editor.focus(); }
+  }
+
+  // ---------- hiding the folders (button, Ctrl+\, or by itself when the window is narrow) ----------
+  const side = document.querySelector('.side');
+  const narrow = () => matchMedia('(max-width: 720px)').matches;
+  const sideVisible = () => getComputedStyle(side).display !== 'none';
+  function syncSideBtn() {
+    const on = sideVisible(), b = $('sideBtn');
+    b.setAttribute('aria-pressed', String(on));
+    b.setAttribute('aria-label', 'Folders');
+    b.title = (on ? 'Hide folders' : 'Show folders') + ' (Ctrl+\\)';
+  }
+  function setSide(show) {
+    document.body.classList.toggle('side-hidden', !show);
+    document.body.classList.toggle('side-shown', !!show && narrow());
+    if (!narrow()) api.set_pref('side', show ? 'shown' : 'hidden');
+    syncSideBtn();
+    if (show) { const t = tree.querySelector('.page.active .page-btn') || tree.querySelector('.folder-head'); if (t && narrow()) t.focus(); }
+  }
+  $('sideBtn').addEventListener('click', () => setSide(!sideVisible()));
+  window.addEventListener('resize', () => { if (!narrow()) document.body.classList.remove('side-shown'); syncSideBtn(); });
+
+  // ---------- keyboard: F6 moves between areas, a tip says how to leave the page ----------
+  let lastKeyNav = 0;
+  document.addEventListener('keydown', (e) => {          // only keys that bring you into the page from outside it
+    const inPage = e.target === editor || e.target === margin || editor.contains(e.target) || margin.contains(e.target);
+    if ((e.key === 'Tab' && !inPage) || e.key === 'F6') lastKeyNav = Date.now();
+  }, true);
+  let kbTipTimer = 0;
+  function showKbTip() {
+    if (prefs.kbTip === 'off' || !activeId || !$('undoToast').hidden) return;
+    $('kbTip').hidden = false;
+    clearTimeout(kbTipTimer); kbTipTimer = setTimeout(hideKbTip, 9000);
+  }
+  function hideKbTip() { clearTimeout(kbTipTimer); $('kbTip').hidden = true; }
+  $('kbTipClose').addEventListener('click', () => { hideKbTip(); prefs.kbTip = 'off'; api.set_pref('kb_tip', 'off'); editor.focus(); });
+  paper.addEventListener('mousedown', hideKbTip);
+  function cycleArea(back) {
+    const areas = [
+      () => editor,
+      () => margin,
+      () => sideVisible() ? (tree.querySelector('.page.active .page-btn') || tree.querySelector('.result, .folder-head') || $('search')) : null,
+      () => Array.from(document.querySelectorAll('.head-tools .tool')).find((b) => !b.disabled),
+    ];
+    const a = document.activeElement;
+    let cur = a === editor || editor.contains(a) ? 0 : a === margin || margin.contains(a) ? 1 : side.contains(a) ? 2 : document.querySelector('.head-tools').contains(a) ? 3 : -1;
+    for (let k = 1; k <= areas.length; k++) {
+      const el = areas[(cur + (back ? -k : k) + areas.length * 2) % areas.length]();
+      if (el && !(activeId === null && (el === editor || el === margin))) { el.focus(); return; }
+    }
+  }
 
   $('newPageBtn').addEventListener('click', () => newPage());
-  $('emptyNew').addEventListener('click', () => newPage());
   $('newFolderBtn').addEventListener('click', () => newFolder());
   $('moreBtn').addEventListener('click', moreMenu);
   $('deletePageBtn').addEventListener('click', () => activeId && deletePage(activeId));
@@ -1265,10 +1487,13 @@
     if (dialogState) return;
     if (e.key === 'Escape') {
       if (drag) { endDrag(false); return; }
-      if (!menu.hidden) { closeMenu(); return; }
-      if (!fmt.hidden) { closeFormat(); if (document.contains(lastEd)) lastEd.focus(); return; }
+      if (!menu.hidden) { closeMenu(true); return; }
+      if (!fmt.hidden) { closeFormat(true); return; }
       if (ink.on) { setScribble(false); return; }
+      if (!$('kbTip').hidden) { hideKbTip(); return; }
+      if (narrow() && document.body.classList.contains('side-shown')) { setSide(false); return; }
     }
+    if (e.key === 'F6') { e.preventDefault(); hideKbTip(); cycleArea(e.shiftKey); return; }
     const ctrl = e.ctrlKey || e.metaKey;
     if (ink.on && !ctrl && !e.altKey && document.activeElement === document.body || (ink.on && $('inkBar').contains(document.activeElement) && !ctrl)) {
       const tools = { p: 'pen', m: 'marker', e: 'eraser' };
@@ -1276,8 +1501,11 @@
     }
     if (!ctrl || e.altKey) return;
     const k = e.key.toLowerCase();
-    if ((k === 'z' || k === 'y') && e.target.tagName !== 'INPUT') {      // the title and search keep their own undo
+    if (e.code === 'Backslash' || k === '\\') { e.preventDefault(); setSide(!sideVisible()); return; }
+    if ((k === 'z' || k === 'y') && e.target.tagName !== 'INPUT') {      // search and rename boxes keep their own undo
       e.preventDefault();
+      // Right after a delete, Ctrl+Z brings the page back (unless you have already changed the next page).
+      if (k === 'z' && !e.shiftKey && undoBox.ids && !$('undoToast').hidden && !hist.pending && hist.i === 0) { undoDelete(); return; }
       if (k === 'z' && !e.shiftKey) undo(); else redo();
       return;
     }
@@ -1310,11 +1538,14 @@
     const info = await api.init();
     nb = info.notebook; version = info.version || ''; prefs = info.prefs || {};
     applyFont(info.prefs && info.prefs.font);
+    if (prefs.side === 'hidden') document.body.classList.add('side-hidden');
+    syncSideBtn();
     const last = info.prefs && info.prefs.lastPage;
     const first = nb.folders.find((f) => f.pages.length);
     if (last && findPage(last)) await openPage(last);
     else if (first) await openPage(first.pages[0].id);
     else { renderHead(); renderTree(); }
+    if (document.fonts && document.fonts.ready) document.fonts.ready.then(queueChips);
     NN.ready = true;
   }
 
@@ -1335,6 +1566,7 @@
       inkSvg.dispatchEvent(new PointerEvent(type, { bubbles: true, clientX: r.left + x, clientY: r.top + y, button: 0, buttons: 1, pointerId: 1, pointerType: 'mouse' }));
     };
     try {
+      const key = (el, k, extra) => el.dispatchEvent(new KeyboardEvent('keydown', Object.assign({ key: k, bubbles: true, cancelable: true }, extra || {})));
       const a = await newFolder('Smoke A');
       const b = await newFolder('Smoke B');
       check('create folders', findFolder(a) && findFolder(b) && findFolder(b).name === 'Smoke B');
@@ -1345,18 +1577,27 @@
       check('folder names can have spaces', findFolder(a).name === 'Smoke A with spaces' && !box.closest('button'));
       $('newPageBtn').click();
       await sleep(400);
-      check('new page button opens an empty page', activeId && editor.innerHTML === '' && document.activeElement === titleInput);
+      check('new page starts with a name line and the cursor in it', activeId && editor.querySelector('h1') && document.activeElement === editor && blockAt('H1'));
       await movePage(activeId, a, 0);
       const pid = activeId;
       editor.focus();
-      editor.innerHTML = '<div>Hello from the smoke test</div><div>Second line</div>';
+      editor.innerHTML = '<h1>Smoke page</h1><div>Hello from the smoke test</div><div>Second line</div>';
       editor.dispatchEvent(new InputEvent('input', { bubbles: true }));
+      check('the first line names the page', findPage(pid).page.title === 'Smoke page' && tree.querySelector('[data-page="' + pid + '"] .t').textContent === 'Smoke page' && $('pageName').textContent === 'Smoke page');
       selectText(editor, 'Hello'); exec('bold');
       selectText(editor, 'Second line'); setBlock('h2');
       check('bold and heading', editor.querySelector('b') && editor.querySelector('h2'));
       $('formatBtn').click(); await sleep(50);
       check('Aa popover shows the current style', !fmt.hidden && fmt.querySelector('[data-block="h2"]').getAttribute('aria-current') === 'true');
       closeFormat();
+      selectText(editor, 'Second line'); openFormat(true); await sleep(30);
+      const kbOpen = fmt.contains(document.activeElement) && document.activeElement.dataset.block === 'h2';
+      key(document.activeElement, 'ArrowDown'); const moved = document.activeElement.dataset.block === 'h3';
+      document.activeElement.click(); await sleep(30);
+      const applied = !!editor.querySelector('h3') && fmt.contains(document.activeElement);
+      key(document.activeElement, 'Escape');
+      check('Aa panel works from the keyboard', kbOpen && moved && applied && fmt.hidden && document.activeElement === editor);
+      selectText(editor, 'Second line'); setBlock('h2');
       editor.insertAdjacentHTML('beforeend', '<div>Buy milk</div>');
       selectText(editor, 'Buy milk'); $('checkBtn').click();
       const li = editor.querySelector('ul.checklist > li');
@@ -1364,8 +1605,13 @@
       const lr = li.getBoundingClientRect();
       li.dispatchEvent(new MouseEvent('mousedown', { bubbles: true, cancelable: true, clientX: lr.left - 10, clientY: lr.top + 10 }));
       check('ticking a checklist item', li.hasAttribute('data-checked'));
+      check('a ticked item is announced as done', /Done/.test(getComputedStyle(li, '::before').content));
       margin.focus(); margin.innerHTML = '<div>Margin note</div>'; margin.dispatchEvent(new InputEvent('input', { bubbles: true }));
       check('margin column is separate from the page', margin.textContent === 'Margin note' && !editor.textContent.includes('Margin note'));
+      editor.focus(); key(editor, 'Escape');
+      check('Esc leaves the page', document.querySelector('.head-tools').contains(document.activeElement));
+      editor.focus(); key(document.body, 'F6');
+      check('F6 moves to the next area', document.activeElement === margin);
       $('scribbleBtn').click();
       check('scribble mode', ink.on && !$('inkBar').hidden && editor.contentEditable === 'false');
       pointer('pointerdown', 200, 60); pointer('pointermove', 240, 80); pointer('pointermove', 300, 70); pointer('pointerup', 300, 70);
@@ -1388,7 +1634,6 @@
       api.save_page = realSave;
       $('modalOk').click(); await sleep(100); await save.chain;
       check('Try again saves it', $('modal').hidden && !save.failed && (await api.read_page(pid)).text.includes('more'));
-      // one history for typing and drawing
       editor.focus(); caretIn(editor, true);
       document.execCommand('insertText', false, ' undo-me');
       await sleep(800);
@@ -1402,11 +1647,11 @@
       const a2 = !editor.textContent.includes('undo-me');
       redo(); redo();
       check('undo and redo walk through typing and drawing together', a1 && a2 && editor.textContent.includes('undo-me') && ink.strokes.length === strokes);
-      // tables
       editor.focus(); caretIn(editor, true);
       $('formatBtn').click(); await sleep(30); $('tableBtn').click();
       let t = editor.querySelector('table');
-      check('insert a table', t && t.rows.length === 3 && t.rows[0].cells.length === 2 && blockAt('TD') === t.rows[0].cells[0] && !$('tableBar').hidden);
+      await sleep(50);
+      check('insert a table, with a handle in the margin', t && t.rows.length === 3 && t.rows[0].cells.length === 2 && blockAt('TD') === t.rows[0].cells[0] && $('chips').children.length === 1);
       document.execCommand('insertText', false, 'Day');
       onEditorKey(new KeyboardEvent('keydown', { key: 'Tab' })); document.execCommand('insertText', false, 'Task');
       check('Tab moves to the next cell', t.rows[0].cells[1].textContent === 'Task');
@@ -1418,32 +1663,55 @@
       t = editor.querySelector('table');
       check('table changes can be undone', t && t.rows.length === 4 && t.rows[0].cells.length === 3);
       redo(); redo();
+      $('chips').children[0].click(); await sleep(30);
+      check('the table handle opens the table menu', !menu.hidden && menu.textContent.includes('Add row below'));
+      key(menu, 'Escape'); await sleep(30);
+      check('Esc closes a menu and goes back to its button', menu.hidden && document.activeElement === $('chips').children[0]);
       await sleep(600); await save.chain;
       check('the table is saved', (await api.read_page(pid)).text.includes('<td>Day</td>'));
-      titleInput.focus(); type(titleInput, 'Renamed page');
-      await sleep(900); await flushTitle();
+      editor.querySelector('h1').textContent = 'Renamed page';
+      editor.dispatchEvent(new InputEvent('input', { bubbles: true }));
+      await sleep(1000); await flushTitle();
       const snap = await api.snapshot();
-      check('renaming a page from its title', snap.folders.some((f) => f.pages.some((p) => p.id === pid && p.title === 'Renamed page')));
+      check('renaming a page by changing its first line', snap.folders.some((f) => f.pages.some((p) => p.id === pid && p.title === 'Renamed page')) && $('pageName').textContent === 'Renamed page');
       await movePage(pid, b, 0);
       const fb = (await api.snapshot()).folders.find((f) => f.id === b);
       check('moving a page to another folder', fb && fb.pages[0] && fb.pages[0].id === pid);
       await moveFolder(b, 0);
       check('sorting folders', (await api.snapshot()).folders[0].id === b);
-      const grip = tree.querySelector('[data-folder="' + a + '"] .folder-row .grip');
-      check('folders have drag handles', !!grip);
+      const opener = tree.querySelector('[data-folder="' + b + '"] .row-more');
+      folderMenu(b, 10, 10, opener); await sleep(20);
+      const firstItem = document.activeElement; key(menu, 'ArrowDown');
+      const arrows = document.activeElement !== firstItem && menu.contains(document.activeElement);
+      Array.from(menu.querySelectorAll('.item')).find((x) => x.textContent.startsWith('Move down')).click(); await sleep(300);
+      check('menus: arrow keys, and Move down without dragging', arrows && (await api.snapshot()).folders[1].id === b);
+      check('folders and pages have drag handles', !!tree.querySelector('.folder-row .grip') && !!tree.querySelector('.page .grip'));
       toggleFolder(a); const closed = !findFolder(a).open; toggleFolder(a);
       check('opening and closing a folder', closed && findFolder(a).open);
       const tmp = await newPage(a, 'Delete me');
-      await deletePage(tmp, true);
-      check('deleting a page', !findPage(tmp) && !(await api.snapshot()).folders.some((f) => f.pages.some((p) => p.id === tmp)));
+      await deletePage(tmp);
+      const gone = !findPage(tmp) && (nb.trash || []).some((x) => x.title === 'Delete me');
+      check('deleting asks nothing and shows Undo', gone && !$('undoToast').hidden && $('modal').hidden);
+      await undoDelete();
+      check('Undo puts the page back', !!findPage(tmp) && $('undoToast').hidden);
+      await deletePage(tmp); hideUndo();
+      $('binBtn').click(); await sleep(20);
+      const put = $('binList').querySelector('[data-restore]');
+      put.click(); await sleep(400);
+      check('Recently deleted: Put back', !!findPage(tmp) && !(nb.trash || []).some((x) => x.title === 'Delete me'));
+      $('binBtn').click();
+      await deletePage(tmp); hideUndo();
       type($('search'), 'smoke test'); await sleep(600);
-      check('search finds text inside pages', searchHits && searchHits.has(pid));
-      $('search').value = ''; searchHits = null; renderTree();
+      const card = tree.querySelector('.result[data-page="' + pid + '"]');
+      check('search shows a preview with the words marked', card && card.querySelector('mark') && /smoke test/i.test(card.querySelector('mark').textContent + card.textContent) && /match/.test($('searchCount').textContent));
+      clearSearch();
       await setColor(a, COLORS[3]);
       check('folder colour', (await api.snapshot()).folders.find((f) => f.id === a).color === COLORS[3]);
+      setSide(false); const hidden = !sideVisible(); setSide(true);
+      check('hide and show the folders', hidden && sideVisible() && $('sideBtn').getAttribute('aria-pressed') === 'true');
       await openPage(pid);
-      check('reopening a page shows everything', editor.textContent.startsWith('Hello from the smoke test') && margin.textContent === 'Margin note' &&
-        inkSvg.querySelectorAll('path').length === 2 && !!editor.querySelector('table') && titleInput.value === 'Renamed page');
+      check('reopening a page shows everything', editor.textContent.includes('Hello from the smoke test') && margin.textContent === 'Margin note' &&
+        inkSvg.querySelectorAll('path').length === 2 && !!editor.querySelector('table') && firstLine() === 'Renamed page');
     } catch (e) {
       steps.push({ name: 'self-test crashed: ' + errText(e) + ' ' + (e && e.stack ? e.stack.split('\n')[1] : ''), ok: false });
     }

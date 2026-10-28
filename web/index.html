@@ -9,14 +9,10 @@
 <body class="font-hand">
 <div class="app">
   <main class="sheet" aria-label="Page">
+    <h1 class="sr-only" id="pageName">No page open</h1>
     <header class="sheet-head">
-      <div class="head-text">
-        <span class="folder-label" id="folderLabel"></span>
-        <label class="sr-only" for="title">Page title</label>
-        <input id="title" class="title" type="text" autocomplete="off" spellcheck="false" placeholder="Untitled">
-      </div>
+      <p class="crumb"><span class="crumb-dot" id="folderDot"></span><span class="folder-label" id="folderLabel"></span><span class="crumb-sep" id="crumbSep" aria-hidden="true">·</span><span class="date" id="date"></span></p>
       <div class="head-tools" role="toolbar" aria-label="Page tools">
-        <span class="date" id="date"></span>
         <button type="button" class="tool" id="undoBtn" title="Undo (Ctrl+Z)" aria-label="Undo" disabled>
           <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M9 14 4 9l5-5"/><path d="M4 9h10.5a5.5 5.5 0 0 1 0 11H11"/></svg>
         </button>
@@ -31,8 +27,12 @@
         <button type="button" class="tool" id="scribbleBtn" title="Scribble" aria-label="Scribble" aria-pressed="false">
           <svg viewBox="0 0 24 24" aria-hidden="true"><path d="m14.5 4.5 5 5L9 20H4v-5z"/><path d="m12.5 6.5 5 5"/></svg>
         </button>
-        <button type="button" class="tool" id="deletePageBtn" title="Delete page" aria-label="Delete page">
+        <button type="button" class="tool" id="deletePageBtn" title="Delete page (you can undo it)" aria-label="Delete page">
           <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7h16M10 11v6M14 11v6M6 7l1 12a2 2 0 0 0 2 2h6a2 2 0 0 0 2-2l1-12M9 7V4h6v3"/></svg>
+        </button>
+        <span class="tool-sep" aria-hidden="true"></span>
+        <button type="button" class="tool" id="sideBtn" title="Hide folders (Ctrl+\)" aria-label="Show folders" aria-pressed="true">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="4.5" width="18" height="15" rx="2"/><path d="M15 4.5v15M17.5 9h1.5M17.5 12h1.5"/></svg>
         </button>
       </div>
     </header>
@@ -40,13 +40,31 @@
     <div class="paper" id="paper">
       <div class="leaf" id="leaf">
         <div class="ed margin-ed is-empty" id="margin" contenteditable="true" role="textbox" aria-multiline="true" aria-label="Margin notes" spellcheck="false" data-placeholder="Margin"></div>
-        <div class="ed body-ed is-empty" id="editor" contenteditable="true" role="textbox" aria-multiline="true" aria-label="Page text" spellcheck="true" data-placeholder="Start writing…"></div>
+        <div class="ed body-ed is-empty" id="editor" contenteditable="true" role="textbox" aria-multiline="true" aria-label="Page text. The first line is the page name." spellcheck="true" data-placeholder="Page name"></div>
+        <div class="chips" id="chips"></div>
         <svg class="ink" id="ink" aria-hidden="true"></svg>
       </div>
       <div class="empty" id="empty" hidden>
-        <p>No page open.</p>
-        <button type="button" class="primary" id="emptyNew">New page</button>
+        <p>Pick a page on the right, or press Ctrl+N for a new one.</p>
       </div>
+    </div>
+
+    <div class="kbtip" id="kbTip" role="note" hidden>
+      <span><kbd>Esc</kbd> leave the page</span>
+      <span><kbd>F6</kbd> page, margin, folders</span>
+      <button type="button" id="kbTipClose" aria-label="Don't show this tip again" title="Don't show again">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18"/></svg>
+      </button>
+    </div>
+
+    <div class="undo-toast" id="undoToast" role="status" hidden>
+      <span class="bar" aria-hidden="true"></span>
+      <span id="undoText"></span>
+      <span class="hint" id="undoHint">Ctrl+Z</span>
+      <button type="button" id="undoDel">Undo</button>
+      <button type="button" class="x" id="undoClose" aria-label="Close">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18"/></svg>
+      </button>
     </div>
 
     <div class="inkbar" id="inkBar" role="toolbar" aria-label="Scribble tools" hidden>
@@ -83,6 +101,10 @@
     <div class="side-head">
       <h2>Folders</h2>
       <div class="side-tools">
+        <button type="button" class="new-page" id="newPageBtn" title="New page (Ctrl+N)">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg>
+          New page
+        </button>
         <button type="button" class="icon-btn" id="newFolderBtn" title="New folder (Ctrl+Shift+N)" aria-label="New folder">
           <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><path d="M12 10.5v6M9 13.5h6"/></svg>
         </button>
@@ -96,11 +118,16 @@
       <span class="sr-only">Search pages</span>
       <input id="search" type="search" placeholder="Search pages" autocomplete="off" spellcheck="false">
     </label>
-    <nav class="tree" id="tree"></nav>
-    <button type="button" class="primary new-page" id="newPageBtn" title="New page (Ctrl+N)">
-      <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg>
-      New page
-    </button>
+    <p class="search-count" id="searchCount" role="status" aria-live="polite"></p>
+    <nav class="tree" id="tree" aria-label="Folders and pages"></nav>
+    <div class="bin" id="bin">
+      <button type="button" class="bin-head" id="binBtn" aria-expanded="false">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7h16M10 11v6M14 11v6M6 7l1 12a2 2 0 0 0 2 2h6a2 2 0 0 0 2-2l1-12M9 7V4h6v3"/></svg>
+        <span class="bin-title">Recently deleted</span>
+        <span class="bin-count" id="binCount">0</span>
+      </button>
+      <div class="bin-list" id="binList" hidden></div>
+    </div>
   </aside>
 </div>
 
@@ -137,19 +164,10 @@
   </div>
   <button type="button" class="st st-table" id="tableBtn"><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3.5" y="5" width="17" height="14" rx="1.5"/><path d="M3.5 9.7h17M3.5 14.3h17M12 5v14"/></svg><span>Table</span><kbd>Ctrl+Alt+T</kbd></button>
 </div>
-<div class="tablebar" id="tableBar" role="toolbar" aria-label="Table" hidden>
-  <button type="button" data-op="rowBelow" title="Add a row below">+ Row</button>
-  <button type="button" data-op="colRight" title="Add a column to the right">+ Column</button>
-  <span class="sep" aria-hidden="true"></span>
-  <button type="button" data-op="delRow" title="Delete this row">− Row</button>
-  <button type="button" data-op="delCol" title="Delete this column">− Column</button>
-  <button type="button" data-op="delTable" class="del" title="Delete the table" aria-label="Delete table"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7h16M10 11v6M14 11v6M6 7l1 12a2 2 0 0 0 2 2h6a2 2 0 0 0 2-2l1-12M9 7V4h6v3"/></svg></button>
-</div>
-
 <div class="menu" id="menu" role="menu" hidden></div>
 <div class="modal-back" id="modal" hidden>
   <div class="modal" role="alertdialog" aria-modal="true" aria-labelledby="modalTitle" aria-describedby="modalText">
-    <h3 id="modalTitle"></h3>
+    <h2 id="modalTitle"></h2>
     <p id="modalText"></p>
     <div class="modal-buttons">
       <button type="button" class="plain" id="modalCancel">Cancel</button>

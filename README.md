@@ -13,7 +13,8 @@ the first time because the app isn't signed: click **More info → Run anyway**.
 
 ## What it does
 
-- **Lined pages** in a handwriting font (switch to plain text in the **⋯** menu).
+- **Lined pages** in a handwriting font (switch to plain text in the **⋯** menu). The first line
+  of a page is its name, so there is nothing to fill in before you start writing.
   Everything is **saved automatically** while you type. If a save ever fails (a USB stick was
   pulled out, say) a popup tells you, and the app keeps trying.
 - **Formatting like Notes on a Mac.** Click **Aa** for Title, Heading, Subheading, Body and
@@ -30,16 +31,29 @@ the first time because the app isn't signed: click **More info → Run anyway**.
   The eraser removes whole strokes, and Undo/Redo work as you'd expect.
 - **Folders on the right.** Click a folder to open or close it. Each folder has a coloured tab.
 - **Sort by dragging.** Hover over a folder or page and drag its handle (or the row itself) to move it.
-  Drop a page on a folder to move it there. Alt+↑/↓ moves the selected folder or page with the keyboard.
+  Drop a page on a folder to move it there. No mouse or no dragging? Use **Move up / Move down** in the
+  ⋯ menu, or Alt+↑/↓.
 - **Right-click** (or the **⋯** that appears on hover) to rename, recolour, move or delete.
   Double-click a name to rename it, or just type a new title at the top of the page.
-- **Search** finds pages by title, text and margin notes.
+- **Search** finds pages by name, text and margin notes, and shows a line of each page with your words marked.
 - **Drop .txt, .md or .html files** from Explorer onto the window to add them as pages.
-- Deleted pages and folders go to a `_Trash` folder inside your notes folder, so nothing is lost by mistake.
+- **Deleting asks nothing, and can be undone.** Click **Undo** (or press Ctrl+Z) right after, or find the page
+  under **Recently deleted** at the bottom of the folders and click **Put back**. Pages stay there for 30 days.
+- **Hide the folders** with the button at the top right of the page (or Ctrl+\\) to give the page the whole window.
+  On a narrow window, or zoomed in, they hide by themselves.
 - **Keep running when closed** (in the **⋯** menu): the window's X then only hides the window and
   NiSH Notes waits in the notification area (the tray, by the clock). Click its icon to open it again,
   right-click it to quit. Starting `NiSHNotes.exe` again also brings the window back, and only one
   copy of the app ever runs. If you don't see the icon, it may be under the ˄ arrow by the clock.
+
+## Keyboard and accessibility
+
+Everything works without a mouse. **Esc** leaves the page (Tab is kept for indenting and tables),
+**F6** moves between the page, the margin, the folders and the page tools. Menus open with the
+⋯ button, Shift+F10 or the Menu key, and are used with the arrow keys; **Esc** goes back to where
+you were. The Aa panel opens with the current style selected. Checklist items are read out as
+done or not done, the window title names the open page, and animations stop when Windows'
+"Show animations" setting is off.
 
 Shortcuts: **Ctrl+N** new page · **Ctrl+Shift+N** new folder · **Ctrl+F** search · **F2** rename ·
 **Ctrl+B / I / U** bold, italic, underline · **Ctrl+Shift+X** strikethrough ·
