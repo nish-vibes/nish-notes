@@ -53,8 +53,10 @@ jobs:
           }
           Get-ChildItem web/fonts | ForEach-Object { "{0}  {1:N0} KB" -f $_.Name, ($_.Length / 1KB) }
 
-      - name: Notebook tests (saving, renaming, moving, sorting, Windows file names)
-        run: python tests/test_store.py
+      - name: Tests (notebook on disk, what the X does)
+        run: |
+          python tests/test_store.py
+          python tests/test_close.py
 
       - name: Build exe
         run: pyinstaller NiSHNotes.spec --noconfirm

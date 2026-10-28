@@ -31,6 +31,10 @@ the first time because the app isn't signed: click **More info → Run anyway**.
 - **Search** finds pages by title, text and margin notes.
 - **Drop .txt, .md or .html files** from Explorer onto the window to add them as pages.
 - Deleted pages and folders go to a `_Trash` folder inside your notes folder, so nothing is lost by mistake.
+- **Keep running when closed** (in the **⋯** menu): the window's X then only hides the window and
+  NiSH Notes waits in the notification area (the tray, by the clock). Click its icon to open it again,
+  right-click it to quit. Starting `NiSHNotes.exe` again also brings the window back, and only one
+  copy of the app ever runs. If you don't see the icon, it may be under the ˄ arrow by the clock.
 
 Shortcuts: **Ctrl+N** new page · **Ctrl+Shift+N** new folder · **Ctrl+F** search · **F2** rename ·
 **Ctrl+B / I / U** bold, italic, underline · **Ctrl+Shift+X** strikethrough ·

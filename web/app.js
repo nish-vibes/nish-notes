@@ -20,6 +20,7 @@
   let api = null;
   let nb = { root: '', folders: [] };
   let version = '';
+  let prefs = {};
   let activeId = null;
   let searchHits = null, searchTimer = 0;
   let renameTimer = 0, pendingTitle = null;
@@ -499,6 +500,16 @@
     const r = $('moreBtn').getBoundingClientRect();
     const hand = !document.body.classList.contains('font-clean');
     const items = [{ label: 'Handwriting font', checked: hand, run: () => { applyFont(hand ? 'clean' : 'hand'); api.set_pref('font', hand ? 'clean' : 'hand'); } }, '-'];
+    if (prefs.trayAvailable) {
+      items.push({ label: 'Keep running when closed', checked: !!prefs.keepRunning, run: async () => {
+        const want = !prefs.keepRunning;
+        const on = !!(await call('set_pref', 'keep_running', want));
+        prefs.keepRunning = on;
+        toast(on ? 'The X now hides NiSH Notes in the tray. Right-click the tray icon to quit.'
+          : want ? 'Could not add the tray icon, so the X still closes NiSH Notes.' : 'The X closes NiSH Notes again.');
+      } });
+      items.push('-');
+    }
     if (!api.mock) {
       items.push({ label: 'Open notes folder', run: () => call('open_notes_folder') });
       items.push({ label: 'Change notes folder…', run: changeFolder });
@@ -1131,7 +1142,7 @@
     renderHead();
     api = await whenApi();
     const info = await api.init();
-    nb = info.notebook; version = info.version || '';
+    nb = info.notebook; version = info.version || ''; prefs = info.prefs || {};
     applyFont(info.prefs && info.prefs.font);
     const last = info.prefs && info.prefs.lastPage;
     const first = nb.folders.find((f) => f.pages.length);
@@ -1242,6 +1253,7 @@
     return steps;
   }
 
-  window.NN = { ready: false, selfTest, newPage, newFolder, openPage, movePage, moveFolder, deletePage, sanitize };
+  function setKeepRunning(on) { prefs.keepRunning = !!on; }
+  window.NN = { ready: false, setKeepRunning, selfTest, newPage, newFolder, openPage, movePage, moveFolder, deletePage, sanitize };
   start().catch((e) => toast('NiSH Notes could not start: ' + errText(e)));
 })();
