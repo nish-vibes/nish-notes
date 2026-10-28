@@ -13,24 +13,38 @@ the first time because the app isn't signed: click **More info → Run anyway**.
 
 ## What it does
 
-- **Lined pages** in a handwriting font (switch to plain text with the **Aa** button).
-  Everything is **saved automatically** while you type.
+- **Lined pages** in a handwriting font (switch to plain text in the **⋯** menu).
+  Everything is **saved automatically** while you type. If a save ever fails (a USB stick was
+  pulled out, say) a popup tells you, and the app keeps trying.
+- **Formatting like Notes on a Mac.** Click **Aa** for Title, Heading, Subheading, Body and
+  Monostyled, **bold**, *italic*, underline, strikethrough, bulleted, dashed and numbered lists
+  and indenting. The checklist button makes a to-do list; click a circle to tick it off.
+- **Margin notes.** The narrow column left of the red line is its own little text area, for dates,
+  keywords or reminders next to your page.
+- **Scribble.** Draw on the page with a pen or a see-through marker in six colours and three sizes.
+  The eraser removes whole strokes, and Undo/Redo work as you'd expect.
 - **Folders on the right.** Click a folder to open or close it. Each folder has a coloured tab.
-- **Sort by dragging.** Drag pages up and down, or drop them on another folder.
-  Drag a folder by its name to move it.
-- **Right-click** a folder or page to rename it, change the folder's colour, move or delete.
+- **Sort by dragging.** Hover over a folder or page and drag its handle (or the row itself) to move it.
+  Drop a page on a folder to move it there. Alt+↑/↓ moves the selected folder or page with the keyboard.
+- **Right-click** (or the **⋯** that appears on hover) to rename, recolour, move or delete.
   Double-click a name to rename it, or just type a new title at the top of the page.
-- **Search** finds pages by title and by the text inside them.
-- **Drop .txt files** from Explorer onto the window to add them as pages.
+- **Search** finds pages by title, text and margin notes.
+- **Drop .txt, .md or .html files** from Explorer onto the window to add them as pages.
 - Deleted pages and folders go to a `_Trash` folder inside your notes folder, so nothing is lost by mistake.
 
-Shortcuts: **Ctrl+N** new page · **Ctrl+Shift+N** new folder · **Ctrl+F** search ·
-**F2** rename · **Delete** delete the selected page in the menu.
+Shortcuts: **Ctrl+N** new page · **Ctrl+Shift+N** new folder · **Ctrl+F** search · **F2** rename ·
+**Ctrl+B / I / U** bold, italic, underline · **Ctrl+Shift+X** strikethrough ·
+**Ctrl+Shift+T / H / J / B / M** title, heading, subheading, body, monostyled ·
+**Ctrl+Shift+L** checklist · **Ctrl+Shift+7 / 8 / 9** bulleted, dashed, numbered list ·
+**Tab / Shift+Tab** indent in lists · **Ctrl+Shift+V** paste without formatting ·
+in Scribble: **P / M / E** pen, marker, eraser, **Ctrl+Z / Ctrl+Y** undo, redo, **Esc** done.
 
 ## Where your notes are
 
-Every folder in the menu is a real folder, and every page is an ordinary `.txt` file, so you can
-open, copy or back up your notes without the app.
+Every folder in the menu is a real folder, and every page is a small `.html` file you can open
+in any web browser (text, margin notes and drawing included), copy or back up without the app.
+Pages from NiSH Notes 1.0 were plain `.txt` files; they open as before and become `.html` the
+first time you change them.
 
 - By default they are in **Documents\NiSH Notes**.
 - **Portable mode:** make a folder called `Notes` next to `NiSHNotes.exe` and the app uses that

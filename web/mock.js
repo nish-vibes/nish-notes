@@ -6,7 +6,7 @@ window.makeMockApi = function () {
   const stamp = () => new Date().toISOString();
   const folders = [
     { id: id('f'), name: 'Inbox', color: '#E3A93E', open: true, pages: [
-      { id: id('p'), title: 'Welcome', created: stamp(), updated: stamp(), text: 'Welcome to NiSH Notes!\n\nThis is a preview running in the browser, so nothing is saved to disk.' },
+      { id: id('p'), title: 'Welcome', created: stamp(), updated: stamp(), doc: { text: '<h1>Welcome to NiSH Notes!</h1><div>This is a preview running in the browser, so nothing is saved to disk.</div>', margin: '<div>Preview</div>', ink: [] } },
     ] },
     { id: id('f'), name: 'School', color: '#6A9BD1', open: true, pages: [] },
   ];
@@ -25,9 +25,9 @@ window.makeMockApi = function () {
     init: () => wait({ notebook: snap(), version: 'preview', prefs: { font: 'hand', lastPage: null } }),
     reload: () => wait(snap()),
     snapshot: () => wait(snap()),
-    read_page: (pid) => wait(findPage(pid)[1].text || ''),
-    save_page: (pid, text) => { const p = findPage(pid)[1]; p.text = text; p.updated = stamp(); return wait(p.updated); },
-    create_page: (fid, title, index) => { const f = findFolder(fid); const p = { id: id('p'), title: title || 'Untitled', created: stamp(), updated: stamp(), text: '' };
+    read_page: (pid) => wait(JSON.parse(JSON.stringify(findPage(pid)[1].doc || { text: '', margin: '', ink: [] }))),
+    save_page: (pid, doc) => { const p = findPage(pid)[1]; p.doc = JSON.parse(JSON.stringify(doc)); p.updated = stamp(); return wait(p.updated); },
+    create_page: (fid, title, index) => { const f = findFolder(fid); const p = { id: id('p'), title: title || 'Untitled', created: stamp(), updated: stamp(), doc: { text: '', margin: '', ink: [] } };
       f.pages.splice(clamp(index, f.pages.length), 0, p); f.open = true; return wait(p.id); },
     rename_page: (pid, title) => { const p = findPage(pid)[1]; p.title = (title || '').trim() || 'Untitled'; return wait(p.title); },
     move_page: (pid, fid, index) => { const [src, p] = findPage(pid); const dst = findFolder(fid); src.pages.splice(src.pages.indexOf(p), 1);
@@ -42,7 +42,7 @@ window.makeMockApi = function () {
     move_folder: (fid, index) => { const f = findFolder(fid); folders.splice(folders.indexOf(f), 1); folders.splice(clamp(index, folders.length), 0, f); return wait(null); },
     delete_folder: (fid) => { const f = findFolder(fid); folders.splice(folders.indexOf(f), 1); trash.push(f); return wait(null); },
     search: (q) => { const words = (q || '').toLowerCase().split(/\s+/).filter(Boolean); const hits = [];
-      folders.forEach((f) => f.pages.forEach((p) => { const hay = (p.title + '\n' + (p.text || '')).toLowerCase(); if (words.length && words.every((w) => hay.includes(w))) hits.push(p.id); }));
+      folders.forEach((f) => f.pages.forEach((p) => { const d = p.doc || {}; const hay = (p.title + '\n' + ((d.text || '') + ' ' + (d.margin || '')).replace(/<[^>]+>/g, ' ')).toLowerCase(); if (words.length && words.every((w) => hay.includes(w))) hits.push(p.id); }));
       return wait(hits); },
     set_pref: () => wait(null),
     open_notes_folder: () => wait(null),

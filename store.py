@@ -1,7 +1,9 @@
 """The notebook on disk.
 
-Every folder in the menu is a real folder and every page is a plain .txt file inside it,
-so the notes can be read (and backed up) without the app. A small index file,
+Every folder in the menu is a real folder and every page is a small .html file inside it
+(text with formatting, margin notes and drawings), so the notes open in any web browser and
+can be backed up without the app. Plain .txt and .md files work too: they show up as pages
+and become .html the first time they are edited. A small index file,
 ``_nishnotes.json``, remembers the things a file system can't: the order of folders and
 pages, folder colours and which folders are open.
 
@@ -10,6 +12,7 @@ start; pages whose file has disappeared are dropped from the index. Deleted page
 folders are moved to ``_Trash`` inside the notes folder, never erased.
 """
 import datetime
+import html
 import json
 import os
 import re
@@ -20,7 +23,8 @@ from pathlib import Path
 
 INDEX = "_nishnotes.json"
 TRASH = "_Trash"
-TEXT_EXT = (".txt", ".md")
+TEXT_EXT = (".html", ".htm", ".txt", ".md")
+HTML_EXT = (".html", ".htm")
 COLORS = ["#E3A93E", "#6A9BD1", "#D97B63", "#79AE7F", "#A58BD6", "#8C8A84"]
 _BAD = re.compile(r'[<>:"/\\|?*\x00-\x1f]')
 _RESERVED = {"CON", "PRN", "AUX", "NUL", *(f"COM{i}" for i in range(1, 10)), *(f"LPT{i}" for i in range(1, 10))}
@@ -43,6 +47,124 @@ def safe_name(name, fallback="Untitled"):
 
 def _new_id(prefix):
     return prefix + uuid.uuid4().hex[:10]
+
+
+# ---------- the page file ----------
+# A page file is an ordinary web page. The app finds its parts by the comment markers, so the
+# rest of the file (styles, the drawing as SVG for browsers) can change between versions.
+_HEX = re.compile(r"^#[0-9a-fA-F]{6}$")
+_PART = {k: re.compile(r"<!--nn:%s-->(.*?)<!--/nn:%s-->" % (k, k), re.S) for k in ("text", "margin")}
+_INK = re.compile(r'<script type="application/json" id="nn-ink">(.*?)</script>', re.S)
+_BODY = re.compile(r"<body[^>]*>(.*)</body>", re.S | re.I)
+_TAG = re.compile(r"<[^>]+>")
+_BLOCK_END = re.compile(r"</(p|div|h[1-6]|li|pre|tr)>|<br\s*/?>", re.I)
+MAX_POINTS = 20000          # per stroke
+MAX_STROKES = 5000
+
+FILE_CSS = """
+body{margin:0;background:#FFFEF8;color:#22304A;font:18px/32px "Segoe Print","Kalam","Comic Sans MS",cursive}
+.nn-page{position:relative;display:grid;grid-template-columns:110px minmax(0,1fr);min-height:100vh;
+ background-image:repeating-linear-gradient(to bottom,transparent 0,transparent 31px,#C5D5EC 31px,#C5D5EC 32px);background-position:0 8px}
+.nn-margin{padding:8px 10px 64px 12px;border-right:2px solid #E7A3A3;font-size:15px;color:#4A5568;white-space:pre-wrap;overflow-wrap:anywhere}
+.nn-text{padding:8px 32px 64px 16px;white-space:pre-wrap;overflow-wrap:anywhere}
+.nn-page h1,.nn-page h2,.nn-page h3,.nn-page p,.nn-page pre,.nn-page ul,.nn-page ol{margin:0;line-height:32px}
+.nn-page h1{font-size:28px}.nn-page h2{font-size:24px}.nn-page h3{font-size:20px}
+.nn-page pre{font:15px/32px Consolas,monospace}
+.nn-page ul,.nn-page ol{padding-left:28px}
+ul.dashed{list-style:none}ul.dashed>li::before{content:"\\2013";display:inline-block;width:20px;margin-left:-20px}
+ul.checklist{list-style:none}ul.checklist>li::before{content:"\\25CB";display:inline-block;width:24px;margin-left:-24px}
+ul.checklist>li[data-checked]::before{content:"\\25C9"}ul.checklist>li[data-checked]{color:#8a8f98}
+.nn-ink{position:absolute;left:0;top:0;pointer-events:none;overflow:visible}
+@media print{.nn-page{background:none}}
+"""
+
+
+def clean_ink(ink):
+    """Only well-formed strokes are kept: {"t": "pen"|"marker", "c": "#rrggbb", "w": width, "p": [x, y, x, y, ...]}."""
+    out = []
+    if not isinstance(ink, list):
+        return out
+    for s in ink[:MAX_STROKES]:
+        try:
+            t = s.get("t")
+            c = str(s.get("c", ""))
+            w = float(s.get("w"))
+            p = [round(float(v), 1) for v in s.get("p", [])[:MAX_POINTS * 2]]
+        except (AttributeError, TypeError, ValueError):
+            continue
+        if t in ("pen", "marker") and _HEX.match(c) and 0.5 <= w <= 80 and len(p) >= 2 and len(p) % 2 == 0 \
+                and all(-1e5 < v < 1e6 for v in p):
+            out.append({"t": t, "c": c, "w": round(w, 1), "p": p})
+    return out
+
+
+def _svg(ink):
+    if not ink:
+        return ""
+    xs = [v for s in ink for v in s["p"][0::2]]
+    ys = [v for s in ink for v in s["p"][1::2]]
+    w, h = max(xs) + 40, max(ys) + 40
+    paths = []
+    for s in ink:
+        p = s["p"]
+        d = "M%s %s" % (p[0], p[1]) + "".join(" L%s %s" % (p[i], p[i + 1]) for i in range(2, len(p), 2))
+        if len(p) == 2:
+            d += " l0.1 0"
+        extra = ' opacity="0.35" style="mix-blend-mode:multiply"' if s["t"] == "marker" else ""
+        paths.append('<path d="%s" stroke="%s" stroke-width="%s"%s/>' % (d, s["c"], s["w"], extra))
+    return ('<svg class="nn-ink" width="%d" height="%d" fill="none" stroke-linecap="round" stroke-linejoin="round" '
+            'xmlns="http://www.w3.org/2000/svg">%s</svg>' % (w, h, "".join(paths)))
+
+
+def _part(s):
+    """The app's sanitizer already removed comments; make sure no marker can end a part early."""
+    return str(s or "").replace("<!--", "&lt;!--")
+
+
+def render_page(title, text, margin, ink):
+    ink = clean_ink(ink)
+    data = json.dumps(ink, separators=(",", ":")).replace("</", "<\\/")
+    return ("<!doctype html>\n<html>\n<head>\n<meta charset=\"utf-8\">\n<meta name=\"generator\" content=\"NiSH Notes\">\n"
+            "<title>%s</title>\n<style>%s</style>\n</head>\n<body>\n<div class=\"nn-page\">\n"
+            "<aside class=\"nn-margin\"><!--nn:margin-->%s<!--/nn:margin--></aside>\n"
+            "<article class=\"nn-text\"><!--nn:text-->%s<!--/nn:text--></article>\n%s\n</div>\n"
+            "<script type=\"application/json\" id=\"nn-ink\">%s</script>\n</body>\n</html>\n"
+            % (html.escape(str(title or "")), FILE_CSS, _part(margin), _part(text), _svg(ink), data))
+
+
+def text_to_html(text):
+    """Plain text (an old .txt page) as the editor's lines."""
+    text = str(text or "").replace("\r\n", "\n").replace("\r", "\n")
+    if not text:
+        return ""
+    return "".join("<div>%s</div>" % (html.escape(line, quote=False) or "<br>") for line in text.split("\n"))
+
+
+def parse_page(raw, suffix):
+    """{"text", "margin", "ink"} from a page file. The page sanitizes text and margin again before showing them."""
+    if suffix.lower() not in HTML_EXT:
+        return {"text": text_to_html(raw), "margin": "", "ink": []}
+    parts = {}
+    for k, rx in _PART.items():
+        m = rx.search(raw)
+        parts[k] = m.group(1) if m else ""
+    if not _PART["text"].search(raw):          # a web page made by something else
+        m = _BODY.search(raw)
+        parts["text"] = m.group(1) if m else raw
+    ink = []
+    m = _INK.search(raw)
+    if m:
+        try:
+            ink = clean_ink(json.loads(m.group(1)))
+        except ValueError:
+            ink = []
+    return {"text": parts["text"], "margin": parts["margin"], "ink": ink}
+
+
+def plain_text(fragment):
+    """Readable text from an html fragment (for search)."""
+    s = _BLOCK_END.sub("\n", str(fragment or ""))
+    return html.unescape(_TAG.sub("", s))
 
 
 def _write_atomic(path, text):
@@ -83,7 +205,7 @@ class Notebook:
             if first_run and not self.data["folders"]:
                 f = self._add_folder("Inbox")
                 p = self._add_page(f, "Welcome")
-                self._file(f, p).write_text(WELCOME, encoding="utf-8")
+                _write_atomic(self._file(f, p), render_page(p["title"], WELCOME, WELCOME_MARGIN, []))
             self._save_index()
             return self.snapshot()
 
@@ -227,10 +349,10 @@ class Notebook:
     # ---------- pages ----------
     def _add_page(self, f, title, index=None):
         t = now()
-        name = self._unique(self.root / f["dir"], safe_name(title), ".txt")
+        name = self._unique(self.root / f["dir"], safe_name(title), ".html")
         p = {"id": _new_id("p"), "title": str(title or "Untitled").strip()[:120] or "Untitled",
              "file": name, "created": t, "updated": t}
-        _write_atomic(self.root / f["dir"] / name, "")
+        _write_atomic(self.root / f["dir"] / name, render_page(p["title"], "", "", []))
         f["pages"].insert(len(f["pages"]) if index is None else max(0, min(index, len(f["pages"]))), p)
         return p
 
@@ -242,19 +364,34 @@ class Notebook:
             self._save_index()
             return p["id"]
 
-    def read_page(self, page_id):
-        with self.lock:
-            f, p = self._page(page_id)
-            try:
-                with open(self._file(f, p), "r", encoding="utf-8-sig", newline="") as fh:
-                    return fh.read()
-            except UnicodeDecodeError:
-                return self._file(f, p).read_text(encoding="cp1252", errors="replace")
+    def _raw(self, f, p):
+        try:
+            with open(self._file(f, p), "r", encoding="utf-8-sig", newline="") as fh:
+                return fh.read()
+        except UnicodeDecodeError:
+            return self._file(f, p).read_text(encoding="cp1252", errors="replace")
 
-    def save_page(self, page_id, text):
+    def read_page(self, page_id):
+        """{"text": html, "margin": html, "ink": [strokes]}"""
         with self.lock:
             f, p = self._page(page_id)
-            _write_atomic(self._file(f, p), str(text))
+            return parse_page(self._raw(f, p), Path(p["file"]).suffix)
+
+    def save_page(self, page_id, doc):
+        """doc = {"text": html, "margin": html, "ink": [strokes]}. A .txt or .md page becomes .html."""
+        if isinstance(doc, str):
+            doc = {"text": text_to_html(doc)}
+        with self.lock:
+            f, p = self._page(page_id)
+            old = self._file(f, p)
+            if old.suffix.lower() != ".html":
+                p["file"] = self._unique(self.root / f["dir"], old.stem, ".html")
+            _write_atomic(self._file(f, p), render_page(p["title"], doc.get("text"), doc.get("margin"), doc.get("ink")))
+            if self._file(f, p) != old:
+                try:
+                    old.unlink()
+                except OSError:
+                    pass
             p["updated"] = now()
             self._save_index()
             return p["updated"]
@@ -310,7 +447,8 @@ class Notebook:
             for f in self.data["folders"]:
                 for p in f["pages"]:
                     try:
-                        text = self._file(f, p).read_text(encoding="utf-8-sig", errors="replace")
+                        doc = parse_page(self._raw(f, p), Path(p["file"]).suffix)
+                        text = plain_text(doc["text"]) + "\n" + plain_text(doc["margin"])
                     except OSError:
                         text = ""
                     hay = (p["title"] + "\n" + text).lower()
@@ -319,17 +457,20 @@ class Notebook:
         return hits
 
 
-WELCOME = """Welcome to NiSH Notes!
-
-Everything you write here is saved automatically.
-
-On the right you have your folders:
-  – Click a folder to open or close it.
-  – Drag pages to sort them, or drop them on another folder.
-  – Drag a folder by its name to move it up or down.
-  – Right-click a folder or a page to rename, recolour or delete it.
-
-Shortcuts: Ctrl+N new page · Ctrl+Shift+N new folder · Ctrl+F search
-
-Your pages are ordinary .txt files, so you can also open them in any editor.
-"""
+WELCOME = (
+    "<h1>Welcome to NiSH Notes!</h1>"
+    "<div>Everything you write is saved by itself.</div><div><br></div>"
+    "<h3>Writing</h3>"
+    "<ul><li>Click <b>Aa</b> at the top for titles, headings, <b>bold</b>, <i>italic</i>, "
+    "<u>underline</u>, <s>strikethrough</s> and lists.</li>"
+    "<li>The checklist button makes a to-do list. Click a circle to tick it off.</li>"
+    "<li>Write in the narrow column left of the red line for margin notes.</li>"
+    "<li><b>Scribble</b> lets you draw on the page with a pen, a marker and an eraser.</li></ul>"
+    "<div><br></div><h3>Sorting</h3>"
+    "<ul class=\"dashed\"><li>Hover over a folder or page and drag its handle to move it.</li>"
+    "<li>Drop a page on a folder to move it there.</li>"
+    "<li>Right-click a folder or page to rename, recolour or delete it.</li></ul>"
+    "<div><br></div><h3>Try it</h3>"
+    "<ul class=\"checklist\"><li data-checked=\"\">Open NiSH Notes</li><li>Make a folder</li><li>Write your first page</li></ul>"
+)
+WELCOME_MARGIN = "<div>Start</div><div>here</div>"

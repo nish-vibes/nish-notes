@@ -148,11 +148,12 @@ def smoketest(window, api, outdir):
             lines.append(("ok   " if step["ok"] else "FAIL ") + step["name"])
             ok = ok and step["ok"]
         root = Path(api._nb.root)
-        moved = root / "Smoke B" / "Renamed page.txt"
-        good = moved.is_file() and "Hello from the smoke test" in moved.read_text(encoding="utf-8")
-        lines.append(("ok   " if good else "FAIL ") + "page saved, renamed and moved on disk")
+        moved = root / "Smoke B" / "Renamed page.html"
+        raw = moved.read_text(encoding="utf-8") if moved.is_file() else ""
+        good = "Hello from the smoke test" in raw and "<b>" in raw and "Margin note" in raw and "<svg" in raw
+        lines.append(("ok   " if good else "FAIL ") + "page saved (formatting, margin note, drawing), renamed and moved on disk")
         ok = ok and good
-        trashed = any((root / store.TRASH).glob("*.txt"))
+        trashed = any((root / store.TRASH).glob("*.html"))
         lines.append(("ok   " if trashed else "FAIL ") + "deleted page went to _Trash")
         ok = ok and trashed
     except Exception as e:

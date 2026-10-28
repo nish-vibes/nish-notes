@@ -15,28 +15,60 @@
         <label class="sr-only" for="title">Page title</label>
         <input id="title" class="title" type="text" autocomplete="off" spellcheck="false" placeholder="Untitled">
       </div>
-      <div class="head-tools">
+      <div class="head-tools" role="toolbar" aria-label="Page tools">
         <span class="date" id="date"></span>
-        <span class="status" id="status" data-state="saved">
-          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M20 6 9 17l-5-5"/></svg>
-          <span id="statusText">Saved</span>
-        </span>
-        <button type="button" class="icon-btn" id="fontBtn" title="Switch between handwriting and plain text" aria-label="Switch font">
-          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 20 9.5 5h1L16 20M6.5 14h7"/><path d="M17 12.5c1-1 3.5-1 3.5 1.2V20M20.5 16.5c-3 0-4 .6-4 1.9 0 2 3.2 2 4-.2"/></svg>
+        <button type="button" class="tool aa" id="formatBtn" title="Text format" aria-label="Text format" aria-haspopup="dialog" aria-expanded="false">Aa</button>
+        <button type="button" class="tool" id="checkBtn" title="Checklist (Ctrl+Shift+L)" aria-label="Checklist">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="5.5" cy="7" r="2.5"/><path d="m4.3 7 .9.9 1.6-1.8"/><circle cx="5.5" cy="17" r="2.5"/><path d="M11 7h10M11 17h10"/></svg>
         </button>
-        <button type="button" class="icon-btn" id="deletePageBtn" title="Delete page" aria-label="Delete page">
+        <button type="button" class="tool" id="scribbleBtn" title="Scribble" aria-label="Scribble" aria-pressed="false">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="m14.5 4.5 5 5L9 20H4v-5z"/><path d="m12.5 6.5 5 5"/></svg>
+        </button>
+        <button type="button" class="tool" id="deletePageBtn" title="Delete page" aria-label="Delete page">
           <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7h16M10 11v6M14 11v6M6 7l1 12a2 2 0 0 0 2 2h6a2 2 0 0 0 2-2l1-12M9 7V4h6v3"/></svg>
         </button>
       </div>
     </header>
-    <div class="paper">
-      <div class="holes" aria-hidden="true"><span></span><span></span><span></span></div>
-      <label class="sr-only" for="editor">Page text</label>
-      <textarea id="editor" class="editor" spellcheck="true"></textarea>
+
+    <div class="paper" id="paper">
+      <div class="leaf" id="leaf">
+        <div class="ed margin-ed is-empty" id="margin" contenteditable="true" role="textbox" aria-multiline="true" aria-label="Margin notes" spellcheck="false" data-placeholder="Margin"></div>
+        <div class="ed body-ed is-empty" id="editor" contenteditable="true" role="textbox" aria-multiline="true" aria-label="Page text" spellcheck="true" data-placeholder="Start writing…"></div>
+        <svg class="ink" id="ink" aria-hidden="true"></svg>
+      </div>
       <div class="empty" id="empty" hidden>
         <p>No page open.</p>
         <button type="button" class="primary" id="emptyNew">New page</button>
       </div>
+    </div>
+
+    <div class="inkbar" id="inkBar" role="toolbar" aria-label="Scribble tools" hidden>
+      <div class="seg" role="group" aria-label="Tool">
+        <button type="button" data-tool="pen" title="Pen (P)" aria-label="Pen" aria-pressed="true">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="m14.5 4.5 5 5L9 20H4v-5z"/></svg>
+        </button>
+        <button type="button" data-tool="marker" title="Marker (M)" aria-label="Marker" aria-pressed="false">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="m15 3 6 6-8.5 8.5h-6v-6z"/><path d="M6.5 17.5 4 20h6"/></svg>
+        </button>
+        <button type="button" data-tool="eraser" title="Eraser (E): removes whole strokes" aria-label="Eraser" aria-pressed="false">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="m8 20-4.3-4.3a1.5 1.5 0 0 1 0-2.1L13.6 3.7a1.5 1.5 0 0 1 2.1 0l4.6 4.6a1.5 1.5 0 0 1 0 2.1L10.6 20z"/><path d="M8 20h12M9 9.3l5.7 5.7"/></svg>
+        </button>
+      </div>
+      <span class="sep" aria-hidden="true"></span>
+      <div class="colors" id="inkColors" role="group" aria-label="Colour"></div>
+      <span class="sep" aria-hidden="true"></span>
+      <div class="sizes" id="inkSizes" role="group" aria-label="Size"></div>
+      <span class="sep" aria-hidden="true"></span>
+      <button type="button" class="ib" id="inkUndo" title="Undo (Ctrl+Z)" aria-label="Undo">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M9 14 4 9l5-5"/><path d="M4 9h10.5a5.5 5.5 0 0 1 0 11H11"/></svg>
+      </button>
+      <button type="button" class="ib" id="inkRedo" title="Redo (Ctrl+Y)" aria-label="Redo">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="m15 14 5-5-5-5"/><path d="M20 9H9.5a5.5 5.5 0 0 0 0 11H13"/></svg>
+      </button>
+      <button type="button" class="ib" id="inkClear" title="Clear the drawing on this page" aria-label="Clear drawing">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7h16M10 11v6M14 11v6M6 7l1 12a2 2 0 0 0 2 2h6a2 2 0 0 0 2-2l1-12M9 7V4h6v3"/></svg>
+      </button>
+      <button type="button" class="done" id="inkDone" title="Done (Esc)">Done</button>
     </div>
   </main>
 
@@ -65,13 +97,46 @@
   </aside>
 </div>
 
+<div class="pop" id="fmt" role="dialog" aria-label="Text format" hidden>
+  <div class="styles" role="group" aria-label="Paragraph style">
+    <button type="button" data-block="h1" class="st st-h1"><svg class="tick" viewBox="0 0 24 24" aria-hidden="true"><path d="m5 12.5 4.5 4.5L19 7.5"/></svg><span>Title</span><kbd>Ctrl+Shift+T</kbd></button>
+    <button type="button" data-block="h2" class="st st-h2"><svg class="tick" viewBox="0 0 24 24" aria-hidden="true"><path d="m5 12.5 4.5 4.5L19 7.5"/></svg><span>Heading</span><kbd>Ctrl+Shift+H</kbd></button>
+    <button type="button" data-block="h3" class="st st-h3"><svg class="tick" viewBox="0 0 24 24" aria-hidden="true"><path d="m5 12.5 4.5 4.5L19 7.5"/></svg><span>Subheading</span><kbd>Ctrl+Shift+J</kbd></button>
+    <button type="button" data-block="div" class="st st-body"><svg class="tick" viewBox="0 0 24 24" aria-hidden="true"><path d="m5 12.5 4.5 4.5L19 7.5"/></svg><span>Body</span><kbd>Ctrl+Shift+B</kbd></button>
+    <button type="button" data-block="pre" class="st st-pre"><svg class="tick" viewBox="0 0 24 24" aria-hidden="true"><path d="m5 12.5 4.5 4.5L19 7.5"/></svg><span>Monostyled</span><kbd>Ctrl+Shift+M</kbd></button>
+  </div>
+  <div class="segrow" role="group" aria-label="Text style">
+    <button type="button" data-mark="bold" title="Bold (Ctrl+B)" aria-label="Bold" aria-pressed="false"><b>B</b></button>
+    <button type="button" data-mark="italic" title="Italic (Ctrl+I)" aria-label="Italic" aria-pressed="false"><i>I</i></button>
+    <button type="button" data-mark="underline" title="Underline (Ctrl+U)" aria-label="Underline" aria-pressed="false"><u>U</u></button>
+    <button type="button" data-mark="strikeThrough" title="Strikethrough (Ctrl+Shift+X)" aria-label="Strikethrough" aria-pressed="false"><s>S</s></button>
+  </div>
+  <div class="segrow" role="group" aria-label="Lists">
+    <button type="button" data-list="bullet" title="Bulleted list (Ctrl+Shift+7)" aria-label="Bulleted list" aria-pressed="false">
+      <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="5" cy="7" r="1.3" class="dot"/><circle cx="5" cy="12" r="1.3" class="dot"/><circle cx="5" cy="17" r="1.3" class="dot"/><path d="M10 7h10M10 12h10M10 17h10"/></svg>
+    </button>
+    <button type="button" data-list="dashed" title="Dashed list (Ctrl+Shift+8)" aria-label="Dashed list" aria-pressed="false">
+      <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3.5 7h3M3.5 12h3M3.5 17h3M10 7h10M10 12h10M10 17h10"/></svg>
+    </button>
+    <button type="button" data-list="number" title="Numbered list (Ctrl+Shift+9)" aria-label="Numbered list" aria-pressed="false">
+      <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 5.5 5.5 4.5V9M4 9h3M4 14.2c.4-.8 2.6-.9 2.6.4 0 1-2.6 1.7-2.6 3.4h2.8M10 7h10M10 12h10M10 17h10"/></svg>
+    </button>
+    <button type="button" data-indent="outdent" title="Decrease indent (Ctrl+[)" aria-label="Decrease indent">
+      <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M11 6h9M11 12h9M11 18h9M7 9l-3 3 3 3"/></svg>
+    </button>
+    <button type="button" data-indent="indent" title="Increase indent (Ctrl+])" aria-label="Increase indent">
+      <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M11 6h9M11 12h9M11 18h9M4 9l3 3-3 3"/></svg>
+    </button>
+  </div>
+</div>
+
 <div class="menu" id="menu" role="menu" hidden></div>
 <div class="modal-back" id="modal" hidden>
-  <div class="modal" role="dialog" aria-modal="true" aria-labelledby="modalTitle">
+  <div class="modal" role="alertdialog" aria-modal="true" aria-labelledby="modalTitle" aria-describedby="modalText">
     <h3 id="modalTitle"></h3>
     <p id="modalText"></p>
     <div class="modal-buttons">
-      <button type="button" class="ghost" id="modalCancel">Cancel</button>
+      <button type="button" class="plain" id="modalCancel">Cancel</button>
       <button type="button" class="danger" id="modalOk">Delete</button>
     </div>
   </div>
