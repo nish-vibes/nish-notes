@@ -65,7 +65,7 @@ jobs:
         shell: pwsh
         run: |
           $out = Join-Path $PWD "gui-smoke"
-          $p = Start-Process -FilePath "dist\NiSHNotes.exe" -ArgumentList "--smoketest", "`"$out`"" -PassThru
+          $p = Start-Process -FilePath "dist\NiSH Notes\NiSHNotes.exe" -ArgumentList "--smoketest", "`"$out`"" -PassThru
           if (-not $p.WaitForExit(300000)) { $p.Kill(); $timedOut = $true }
           $report = ""
           if (Test-Path "$out\gui_smoketest.txt") { $report = Get-Content "$out\gui_smoketest.txt" -Raw }
@@ -77,12 +77,13 @@ jobs:
           }
           $short = (($report -replace "`r", "" -split "`n") | Where-Object { $_ -match "^ok" }) -join "%0A"
           Write-Output "::notice title=gui-smoketest::$short"
-          "{0:N1} MB" -f ((Get-Item dist\NiSHNotes.exe).Length / 1MB)
+          Compress-Archive -Path "dist\NiSH Notes" -DestinationPath "dist\NiSH-Notes-windows.zip" -Force
+          "{0:N1} MB zipped" -f ((Get-Item "dist\NiSH-Notes-windows.zip").Length / 1MB)
 
       - uses: actions/upload-artifact@v4
         with:
-          name: NiSHNotes-windows
-          path: dist/NiSHNotes.exe
+          name: NiSH-Notes-windows
+          path: dist/NiSH-Notes-windows.zip
           retention-days: 14
 
       - name: Publish release
@@ -92,6 +93,6 @@ jobs:
           tag_name: ${{ steps.rel.outputs.tag }}
           target_commitish: ${{ github.sha }}
           name: NiSH Notes ${{ steps.rel.outputs.tag }}
-          body: "Download **NiSHNotes.exe** below and double-click it. No installer, no admin rights."
+          body: "Download **NiSH-Notes-windows.zip** below, unzip it anywhere (right-click → Extract All), and start **NiSHNotes.exe** in the folder. No installer, no admin rights. Your notes stay where they were."
           make_latest: true
-          files: dist/NiSHNotes.exe
+          files: dist/NiSH-Notes-windows.zip

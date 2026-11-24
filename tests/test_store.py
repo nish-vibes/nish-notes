@@ -251,6 +251,33 @@ class StoreTest(unittest.TestCase):
         self.assertEqual([t["title"] for t in nb.snapshot()["trash"]], ["From v1"])
         self.assertFalse(any(x.name.startswith("Inbox - Old") for x in (self.root / store.TRASH).iterdir()))
 
+    def test_read_a_deleted_page_without_putting_it_back(self):
+        fid = self.nb.create_folder("School")
+        pid = self.nb.create_page(fid, "Essay")
+        self.save(pid, "<h1>Essay</h1><div>draft</div>", "<div>note</div>")
+        tid = self.nb.delete_page(pid)
+        doc = self.nb.read_trash(tid)
+        self.assertIn("draft", doc["text"])
+        self.assertIn("note", doc["margin"])
+        self.assertEqual((doc["title"], doc["folder"]), ("Essay", "School"))
+        self.assertEqual(self.nb.snapshot()["trash"][0]["id"], tid)      # still in Recently deleted
+        with self.assertRaises(KeyError):
+            self.nb.read_trash("t-nope")
+
+    def test_voice_memos(self):
+        import base64
+        data = base64.b64encode(b"\x1aE\xdf\xa3 webm bytes").decode()
+        name = self.nb.save_memo("mabc12345", "audio/webm;codecs=opus", data)
+        self.assertEqual(name, "mabc12345.webm")
+        self.assertTrue((self.root / store.MEMOS / name).is_file())
+        self.assertEqual(self.nb.read_memo("mabc12345"), {"mime": "audio/webm", "data": data})
+        for bad in ("../evil", "m1/../../x", "", "mABC!"):
+            with self.assertRaises(ValueError):
+                self.nb.save_memo(bad, "audio/webm", data)
+        with self.assertRaises(FileNotFoundError):
+            self.nb.read_memo("mmissing1")
+        self.assertNotIn(store.MEMOS, [f["name"] for f in store.Notebook(self.root).snapshot()["folders"]])
+
 
 if __name__ == "__main__":
     result = unittest.main(exit=False, verbosity=2).result

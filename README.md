@@ -3,13 +3,18 @@
 A note-taking app for Windows that looks like a real notebook: lined paper with a red margin
 on the left, and a folder menu on the right where you sort your pages.
 
-No installer and no admin rights: download `NiSHNotes.exe` and double-click it.
+No installer and no admin rights: unzip it and double-click `NiSHNotes.exe`.
 
 ## Download
 
-Get `NiSHNotes.exe` from the [latest release](https://github.com/nish-vibes/nish-notes/releases/latest)
-and put it anywhere (Desktop, Documents, a USB stick). Windows may show "Windows protected your PC"
-the first time because the app isn't signed: click **More info → Run anyway**.
+Get `NiSH-Notes-windows.zip` from the [latest release](https://github.com/nish-vibes/nish-notes/releases/latest),
+right-click it → **Extract All**, and put the `NiSH Notes` folder anywhere (Documents, a USB stick).
+Start `NiSHNotes.exe` inside it; pin it to the taskbar if you like. Windows may show "Windows protected
+your PC" the first time because the app isn't signed: click **More info → Run anyway**.
+
+Since 1.5 the app comes as a folder instead of a single file: a single file had to unpack about
+100 MB to a temp folder every time it started, so the folder starts several times faster. Your notes
+and settings stay where they were; delete the old `NiSHNotes.exe` once the new one runs.
 
 ## What it does
 
@@ -27,6 +32,14 @@ the first time because the app isn't signed: click **More info → Run anyway**.
   Rows stay on the ruled lines.
 - **Margin notes.** The narrow column left of the red line is its own little text area, for dates,
   keywords or reminders next to your page.
+- **Voice memos.** Click the microphone at the top of the page, talk, and click **Stop and save**.
+  The memo appears in the margin on the line you were writing on; click it to play it, right-click
+  (or select it and press Delete) to remove it. The sound files are kept in the `_Voice memos` folder
+  in your notes folder.
+- **Copy and paste stay tidy.** A word or a line pasted into a line takes that line's style (bold and
+  italic come along); whole lines pasted onto an empty line keep theirs. Text copied out of NiSH Notes
+  pastes into other programs without the handwriting font or paper colour. A table pasted into a
+  table cell comes in as text.
 - **Scribble.** Draw on the page with a pen or a see-through marker in six colours and three sizes.
   The eraser removes whole strokes, and Undo/Redo work as you'd expect.
 - **Folders on the right.** Click a folder to open or close it. Each folder has a coloured tab.
@@ -38,9 +51,17 @@ the first time because the app isn't signed: click **More info → Run anyway**.
 - **Search** finds pages by name, text and margin notes, and shows a line of each page with your words marked.
 - **Drop .txt, .md or .html files** from Explorer onto the window to add them as pages.
 - **Deleting asks nothing, and can be undone.** Click **Undo** (or press Ctrl+Z) right after, or find the page
-  under **Recently deleted** at the bottom of the folders and click **Put back**. Pages stay there for 30 days.
+  under **Recently deleted** at the bottom of the folders and click **Put back**. Click a page's name there to
+  read it first without putting it back. Pages stay there for 30 days.
 - **Hide the folders** with the button at the top right of the page (or Ctrl+\\) to give the page the whole window.
   On a narrow window, or zoomed in, they hide by themselves.
+- **Window buttons like on a Mac.** The Windows title bar is hidden; the red, yellow and green dots at the
+  top left close, minimize and fill the screen. Drag the dark desk around the page to move the window,
+  double-click it to fill the screen. The edges still resize the window and Windows' snapping works.
+  Want the Windows title bar back? **⋯ → Window buttons at the top left**.
+- The window remembers its size, and whether it filled the screen, also after hiding in the tray.
+- **Ctrl+W** or **Ctrl+Q** closes the window but keeps NiSH Notes running in the tray, so it opens
+  instantly next time. To quit completely, right-click the tray icon → **Quit NiSH Notes**.
 - **Keep running when closed** (in the **⋯** menu): the window's X then only hides the window and
   NiSH Notes waits in the notification area (the tray, by the clock). Click its icon to open it again,
   right-click it to quit. Starting `NiSHNotes.exe` again also brings the window back, and only one
@@ -55,7 +76,7 @@ you were. The Aa panel opens with the current style selected. Checklist items ar
 done or not done, the window title names the open page, and animations stop when Windows'
 "Show animations" setting is off.
 
-Shortcuts: **Ctrl+N** new page · **Ctrl+Shift+N** new folder · **Ctrl+F** search · **F2** rename ·
+Shortcuts: **Ctrl+W / Ctrl+Q** close the window, keep running in the tray · **Ctrl+N** new page · **Ctrl+Shift+N** new folder · **Ctrl+F** search · **F2** rename ·
 **Ctrl+B / I / U** bold, italic, underline · **Ctrl+Shift+X** strikethrough ·
 **Ctrl+Shift+T / H / J / B / M** title, heading, subheading, body, monostyled ·
 **Ctrl+Shift+L** checklist · **Ctrl+Shift+7 / 8 / 9** bulleted, dashed, numbered list ·
@@ -70,7 +91,7 @@ Pages from NiSH Notes 1.0 were plain `.txt` files; they open as before and becom
 first time you change them.
 
 - By default they are in **Documents\NiSH Notes**.
-- **Portable mode:** make a folder called `Notes` next to `NiSHNotes.exe` and the app uses that
+- **Portable mode:** make a folder called `Notes` inside the `NiSH Notes` folder (next to `NiSHNotes.exe`) and the app uses that
   instead, handy on a USB stick.
 - Or pick any folder with **⋯ → Change notes folder…** (a OneDrive folder works too).
 
@@ -95,7 +116,7 @@ Locally on Windows:
 pip install -r requirements.txt pyinstaller
 python app.py                      # run it
 python tests/test_store.py         # tests
-pyinstaller NiSHNotes.spec         # build dist\NiSHNotes.exe (put the Kalam font in web\fonts first)
+pyinstaller NiSHNotes.spec         # build dist\NiSH Notes\NiSHNotes.exe (put the Kalam font in web\fonts first)
 ```
 
 The handwriting font is [Kalam](https://fonts.google.com/specimen/Kalam) by the Indian Type Foundry,

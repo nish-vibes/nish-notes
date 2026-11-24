@@ -8,10 +8,13 @@ import os
 import sys
 import threading
 import time
+
+STARTED = time.monotonic()
 from pathlib import Path
 
 import webview
 
+import frame
 import instance
 import settings
 import store
@@ -45,7 +48,7 @@ class Api:
                 "prefs": {"font": settings.get("font", "hand"), "lastPage": settings.get("last_page"),
                           "keepRunning": bool(settings.get("keep_running", False)),
                           "kbTip": settings.get("kb_tip", "on"), "side": settings.get("side", "shown"),
-                          "trayAvailable": os.name == "nt"}}
+                          "trayAvailable": os.name == "nt", "frame": settings.get("frame", "dots")}}
 
     def reload(self):
         return self._nb.load()
@@ -67,6 +70,15 @@ class Api:
 
     def delete_page(self, page_id):
         return self._nb.delete_page(page_id)
+
+    def read_trash(self, trash_id):
+        return self._nb.read_trash(trash_id)
+
+    def save_memo(self, memo_id, mime, data_b64):
+        return self._nb.save_memo(memo_id, mime, data_b64)
+
+    def read_memo(self, memo_id):
+        return self._nb.read_memo(memo_id)
 
     def restore(self, trash_ids):
         restored = self._nb.restore(trash_ids)
@@ -106,6 +118,36 @@ class Api:
             settings.put(key, value)
         elif key == "keep_running" and self._app:
             return self._app.set_keep_running(bool(value))
+        elif key == "frame" and self._app:
+            settings.put("frame", "windows" if value == "windows" else "dots")
+            return self._app.apply_frame()
+
+    # the window, for the three dots at the top left (when the Windows title bar is hidden)
+    def window_frame(self):
+        """True when the title bar is hidden and the page should draw its own buttons."""
+        return self._app.apply_frame() if self._app else False
+
+    def window_minimize(self):
+        self._window.minimize()
+
+    def window_zoom(self):
+        """Fill the screen, or go back to the window's own size."""
+        return self._app.toggle_maximized() if self._app else False
+
+    def window_close(self):
+        """The red dot: the same as the X (hides the window if "Keep running when closed" is on)."""
+        threading.Timer(0.01, self._window.destroy).start()
+
+    def window_hide(self):
+        """Ctrl+W and Ctrl+Q: close the window, keep NiSH Notes running in the background."""
+        if self._app:
+            self._app.to_background()
+
+    def window_move(self):
+        try:
+            frame.start_move(self._window)
+        except Exception:
+            pass
 
     def open_notes_folder(self):
         if os.name == "nt":
@@ -136,7 +178,9 @@ class App:
     def __init__(self, window, api):
         self.window, self.api = window, api
         self.size = None
-        self.maximized = False
+        self.maximized = bool(settings.get("maximized", False))
+        self.dots = False
+        self.frame_lock = threading.Lock()
         self.quitting = False
         self.hidden = False
         self.tray = tray.Tray(str(resource("assets", "icon.ico")), self.show, self.quit, self.toggle_keep_running,
@@ -148,6 +192,32 @@ class App:
         width, height = args[-2], args[-1]   # some pywebview versions also pass the window first
         if not self.maximized and width >= 760 and height >= 520:
             self.size = [int(width), int(height)]
+
+    def set_maximized(self, on):
+        if self.hidden:
+            return
+        self.maximized = on
+        settings.put("maximized", on)
+
+    def toggle_maximized(self):
+        if self.maximized:
+            self.window.restore()
+            self.set_maximized(False)
+        else:
+            self.window.maximize()
+            self.set_maximized(True)
+        return self.maximized
+
+    # the title bar: hidden (three dots in the page) unless the user wants the Windows one
+    def apply_frame(self):
+        want_dots = settings.get("frame", "dots") != "windows"
+        with self.frame_lock:
+            try:
+                ok = frame.set_caption(self.window, not want_dots)
+                self.dots = want_dots and ok
+            except Exception:
+                self.dots = False
+        return self.dots
 
     def remember_size(self):
         if self.size:
@@ -176,12 +246,28 @@ class App:
                              "or right-click it to quit.")
 
     def show(self):
-        self.hidden = False
+        """Back from the tray: the window comes back as it was, filling the screen if it did."""
         try:
             self.window.show()
-            self.window.restore()
+            if self.maximized:
+                self.window.maximize()
+            else:
+                self.window.restore()
         except Exception:
             pass
+        self.hidden = False
+        if self.dots:
+            self.apply_frame()
+        if not settings.get("keep_running", False):
+            self.tray.stop()                 # it was only there while the window was hidden
+
+    def to_background(self):
+        """Ctrl+W / Ctrl+Q: hide the window, with the tray icon as the way back."""
+        self.remember_size()
+        if not self.tray.running and not self.tray.start():
+            self.window.minimize()           # no tray icon possible: minimize instead
+            return
+        threading.Timer(0.05, self.hide).start()
 
     def quit(self):
         self.quitting = True
@@ -221,7 +307,7 @@ def smoketest(window, api, outdir):
             time.sleep(0.1)
         else:
             raise RuntimeError("the page never became ready")
-        lines.append("ok   page loaded")
+        lines.append("ok   page loaded and ready %.1f s after Python started" % (time.monotonic() - STARTED))
         window.evaluate_js("NN.selfTest()")
         result = None
         for _ in range(600):
@@ -244,6 +330,22 @@ def smoketest(window, api, outdir):
         lines.append(("ok   " if trashed else "FAIL ") + "deleted page went to _Trash")
         ok = ok and trashed
         app = api._app
+        dots = app.apply_frame()
+        good = dots and not frame.has_caption(window) and window.evaluate_js("document.body.classList.contains('has-dots')")
+        lines.append(("ok   " if good else "FAIL ") + "Windows title bar hidden, three dots at the top left")
+        ok = ok and bool(good)
+        app.toggle_maximized()
+        time.sleep(0.6)
+        api.window_hide()                      # Ctrl+W
+        time.sleep(0.8)
+        hidden_ok = app.hidden and app.tray.running
+        app.show()
+        time.sleep(0.8)
+        good = hidden_ok and frame.is_maximized(window) and not frame.has_caption(window)
+        lines.append(("ok   " if good else "FAIL ") + "Ctrl+W hides to the tray; the window comes back filling the screen")
+        ok = ok and good
+        app.toggle_maximized()
+        time.sleep(0.4)
         on = api.set_pref("keep_running", True)
         good = on and app.tray.running and app.closing() is False
         time.sleep(0.6)
@@ -294,12 +396,14 @@ def main():
     window = webview.create_window(
         settings.APP_NAME, url=str(resource("web", "index.html")), js_api=api,
         width=max(760, int(w)), height=max(520, int(h)), min_size=(760, 520),
-        background_color="#2B303C", text_select=True)
+        background_color="#2B303C", text_select=True, maximized=bool(settings.get("maximized", False)))
     api._window = window
     app = App(window, api)
     window.events.resized += app.resized
-    window.events.maximized += lambda *a: setattr(app, "maximized", True)
-    window.events.restored += lambda *a: setattr(app, "maximized", False)
+    window.events.maximized += lambda *a: app.set_maximized(True)
+    window.events.restored += lambda *a: app.set_maximized(False)
+    window.events.shown += lambda *a: app.apply_frame()
+    window.events.loaded += lambda *a: frame.allow_microphone(window)
     window.events.closing += app.closing
     srv = None
     if not smoke:

@@ -11,6 +11,7 @@ window.makeMockApi = function () {
     { id: id('f'), name: 'School', color: '#6A9BD1', open: true, pages: [] },
   ];
   const trash = [];
+  const memos = {};
   const findPage = (pid) => {
     for (const f of folders) { const p = f.pages.find((x) => x.id === pid); if (p) return [f, p]; }
     throw new Error('No such page');
@@ -55,6 +56,10 @@ window.makeMockApi = function () {
         const hay = (p.title + '\n' + text).toLowerCase(); if (words.length && words.every((w) => hay.includes(w))) {
           const i = text.toLowerCase().indexOf(words[0]); hits.push(i < 0 ? { id: p.id, pre: '', hit: '', post: text.slice(0, 80) } : { id: p.id, pre: text.slice(Math.max(0, i - 30), i), hit: text.slice(i, i + words[0].length), post: text.slice(i + words[0].length, i + 70) }); } }));
       return wait(hits); },
+    read_trash: (tid) => { const t = trash.find((x) => x.id === tid); if (!t) throw new Error('No such page');
+      return wait(Object.assign(JSON.parse(JSON.stringify(t.page.doc || { text: '', margin: '', ink: [] })), { title: t.page.title, folder: t.folder.name, deleted: t.deleted })); },
+    save_memo: (mid, mime, data) => { memos[mid] = { mime, data }; return wait(mid + '.webm'); },
+    read_memo: (mid) => { if (!memos[mid]) throw new Error('missing'); return wait(memos[mid]); },
     set_pref: () => wait(null),
     open_notes_folder: () => wait(null),
     choose_notes_folder: () => wait(null),

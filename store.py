@@ -23,6 +23,9 @@ from pathlib import Path
 
 INDEX = "_nishnotes.json"
 TRASH = "_Trash"
+MEMOS = "_Voice memos"     # recordings from the margin, one file each
+_MEMO_ID = re.compile(r"^m[0-9a-z]{6,32}$")
+_MEMO_EXT = {"audio/webm": ".webm", "audio/ogg": ".ogg", "audio/mp4": ".m4a"}
 KEEP_DAYS = 30            # pages stay in Recently deleted this long
 TEXT_EXT = (".html", ".htm", ".txt", ".md")
 HTML_EXT = (".html", ".htm")
@@ -78,6 +81,7 @@ ul.checklist>li[data-checked]::before{content:"\\25C9"}ul.checklist>li[data-chec
 .nn-ink{position:absolute;left:0;top:0;pointer-events:none;overflow:visible}
 .nn-page table{width:100%;table-layout:fixed;border-collapse:collapse;box-shadow:inset 1px 1px 0 #8FA6C7}
 .nn-page td{padding:0 8px;line-height:32px;vertical-align:top;box-shadow:inset -1px -1px 0 #8FA6C7}
+.nn-margin [data-memo]{color:#2F5E9E;font:600 13px/32px "Segoe UI",sans-serif}
 @media print{.nn-page{background:none}}
 """
 
@@ -544,6 +548,55 @@ class Notebook:
                 restored.append(page["id"])
             self._save_index()
             return restored
+
+    def read_trash(self, trash_id):
+        """A deleted page's contents, to read it without putting it back."""
+        with self.lock:
+            t = next((x for x in self.data.get("trash", []) if x["id"] == trash_id), None)
+            if t is None:
+                raise KeyError("That page is no longer in Recently deleted")
+            path = self.root / TRASH / t["file"]
+            try:
+                raw = path.read_text(encoding="utf-8-sig")
+            except UnicodeDecodeError:
+                raw = path.read_text(encoding="cp1252", errors="replace")
+            doc = parse_page(raw, path.suffix)
+            doc.update({"title": t["title"], "folder": t.get("folder_name") or "", "deleted": t["deleted"]})
+            return doc
+
+    # ---------- voice memos ----------
+    def _memo_path(self, memo_id, ext=None):
+        if not _MEMO_ID.match(str(memo_id or "")):
+            raise ValueError("Not a voice memo id")
+        d = self.root / MEMOS
+        if ext:
+            return d / (memo_id + ext)
+        for e in _MEMO_EXT.values():
+            if (d / (memo_id + e)).is_file():
+                return d / (memo_id + e)
+        raise FileNotFoundError("The recording is missing from " + str(d))
+
+    def save_memo(self, memo_id, mime, data_b64):
+        import base64
+        raw = base64.b64decode(str(data_b64 or ""), validate=True)
+        if not raw or len(raw) > 200 * 1024 * 1024:
+            raise ValueError("The recording is empty or too large")
+        mime = str(mime or "").split(";")[0].strip().lower()
+        path = self._memo_path(memo_id, _MEMO_EXT.get(mime, ".webm"))
+        path.parent.mkdir(parents=True, exist_ok=True)
+        tmp = path.with_name(path.name + ".tmp")
+        with open(tmp, "wb") as fh:
+            fh.write(raw)
+            fh.flush()
+            os.fsync(fh.fileno())
+        os.replace(tmp, path)
+        return path.name
+
+    def read_memo(self, memo_id):
+        import base64
+        path = self._memo_path(memo_id)
+        mime = next((m for m, e in _MEMO_EXT.items() if e == path.suffix), "audio/webm")
+        return {"mime": mime, "data": base64.b64encode(path.read_bytes()).decode("ascii")}
 
     def search(self, query):
         """Pages whose title or text contains every word of the query, each with a short preview

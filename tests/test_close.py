@@ -91,6 +91,37 @@ class CloseTest(unittest.TestCase):
         self.assertEqual(settings.get("window"), [1000, 700])
 
 
+class WindowStateTest(CloseTest):
+    def test_fills_the_screen_again_after_the_tray(self):
+        self.app.set_maximized(True)
+        self.api.set_pref("keep_running", True)
+        self.assertFalse(self.app.closing())
+        time.sleep(0.2)
+        self.app.set_maximized(False)            # a restored event while hidden must not count
+        self.window.calls.clear()
+        self.app.show()
+        self.assertIn("maximize", self.window.calls)
+        self.assertNotIn("restore", self.window.calls)
+        self.assertTrue(settings.get("maximized"))
+        self.assertTrue(app.App(FakeWindow(), self.api).maximized)   # and after a restart
+
+    def test_ctrl_w_keeps_running_in_the_background(self):
+        self.assertFalse(settings.get("keep_running", False))
+        self.api.window_hide()
+        time.sleep(0.2)
+        self.assertTrue(self.app.tray.running)
+        self.assertIn("hide", self.window.calls)
+        self.app.show()
+        self.assertFalse(self.app.tray.running)   # the icon was only there while hidden
+
+    def test_ctrl_w_without_a_tray_minimizes(self):
+        self.app.tray = FakeTray(works=False)
+        self.api.window_hide()
+        time.sleep(0.2)
+        self.assertIn("minimize", self.window.calls)
+        self.assertNotIn("hide", self.window.calls)
+
+
 if __name__ == "__main__":
     result = unittest.main(exit=False, verbosity=2).result
     sys.exit(0 if result.wasSuccessful() else 1)

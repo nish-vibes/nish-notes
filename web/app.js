@@ -66,7 +66,9 @@
     TABLE: 'table', TBODY: 'tbody', THEAD: 'tbody', TFOOT: 'tbody', TR: 'tr', TD: 'td', TH: 'td' };
   const DROP = new Set(['SCRIPT', 'STYLE', 'TEMPLATE', 'IFRAME', 'OBJECT', 'EMBED', 'HEAD', 'TITLE', 'META', 'LINK', 'NOSCRIPT',
     'SVG', 'MATH', 'CANVAS', 'VIDEO', 'AUDIO', 'IMG', 'PICTURE', 'SOURCE', 'INPUT', 'SELECT', 'TEXTAREA', 'BUTTON', 'FORM', 'XML']);
-  function copyClean(src, dst) {
+  // inTable: we are inside a table cell, so a table found here is flattened to its text
+  // (a table inside a table can't be edited sensibly and broke the page's lines).
+  function copyClean(src, dst, inTable) {
     for (const n of Array.from(src.childNodes)) {
       if (n.nodeType === 3) { dst.appendChild(document.createTextNode(n.nodeValue)); continue; }
       if (n.nodeType !== 1) continue;
@@ -74,11 +76,25 @@
       if (DROP.has(tag) || tag.includes(':')) continue;
       const name = KEEP[tag];
       if (!name) {                                    // span, a, font, td ... keep the text only
-        copyClean(n, dst);
+        copyClean(n, dst, inTable);
+        continue;
+      }
+      if (name === 'table' && inTable) {              // a table in a cell: one line per row, cells apart by a tab
+        for (const tr of Array.from(n.querySelectorAll('tr'))) {
+          const line = document.createElement('div');
+          const cells = Array.from(tr.children).filter((c) => /^(TD|TH)$/.test(c.tagName));
+          cells.forEach((c, i) => { if (i) line.appendChild(document.createTextNode('\t')); copyClean(c, line, true); });
+          line.querySelectorAll('div, h1, h2, h3, pre').forEach((b) => { b.after(document.createTextNode(' ')); while (b.firstChild) b.before(b.firstChild); b.remove(); });
+          if (!line.firstChild) line.appendChild(document.createElement('br'));
+          dst.appendChild(line);
+        }
         continue;
       }
       if ((name === 'tr' && !/^(TABLE|TBODY)$/.test(dst.tagName || '')) || (name === 'td' && dst.tagName !== 'TR') || (name === 'tbody' && dst.tagName !== 'TABLE')) {
-        copyClean(n, dst); continue;                  // a stray table part: keep its text
+        copyClean(n, dst, inTable); continue;         // a stray table part: keep its text
+      }
+      if (/^(h1|h2|h3|pre)$/.test(name) && n.querySelector('ul, ol, table, h1, h2, h3, pre, div, p, li')) {
+        copyClean(n, dst, inTable); continue;         // a heading wrapped around a list or other blocks: keep the blocks
       }
       const el = document.createElement(name);
       if (name === 'ul') {
@@ -86,18 +102,78 @@
         if (/\bchecklist\b/.test(c)) el.className = 'checklist'; else if (/\bdashed\b/.test(c)) el.className = 'dashed';
       }
       if (name === 'li' && n.hasAttribute('data-checked')) el.setAttribute('data-checked', '');
-      if (name !== 'br') copyClean(n, el);
+      if (name === 'div' && /^m[0-9a-z]{6,32}$/.test(n.getAttribute('data-memo') || '')) {   // a voice memo in the margin
+        el.setAttribute('data-memo', n.getAttribute('data-memo'));
+        el.setAttribute('data-sec', String(Math.max(0, Math.min(36000, parseInt(n.getAttribute('data-sec'), 10) || 0))));
+        el.textContent = memoLabel(+el.getAttribute('data-sec'));
+        dst.appendChild(el); continue;
+      }
+      if (name !== 'br') copyClean(n, el, inTable || name === 'td');
       if (name === 'td' && !el.firstChild) el.appendChild(document.createElement('br'));
       if ((name === 'table' || name === 'tbody' || name === 'tr') && !el.querySelector('td')) continue;   // empty table parts
-      if (name === 'table' && dst.closest && dst.closest('table')) { while (el.firstChild) dst.appendChild(el.firstChild); continue; }
       dst.appendChild(el);
     }
   }
-  function sanitize(html) {
+  function sanitize(html, inTable) {
     const doc = new DOMParser().parseFromString('<!doctype html><body>' + String(html || ''), 'text/html');
     const box = document.createElement('div');
-    copyClean(doc.body, box);
+    copyClean(doc.body, box, !!inTable);
     return box.innerHTML;
+  }
+  const memoLabel = (sec) => 'Voice memo ' + Math.floor(sec / 60) + ':' + String(sec % 60).padStart(2, '0');
+
+  // ---------- keeping the live page tidy ----------
+  // The browser adds styled <span>s when lines are joined or text is pasted (a body line joined
+  // onto a heading came out small inside it, then grew on reopening), and can put a list inside
+  // a heading. This puts things right after every change, keeping the cursor where it was.
+  const UNTIDY = 'span, font, a, [style], :is(h1, h2, h3, pre) :is(ul, ol, table, div, h1, h2, h3, pre), td table, :scope > div > :is(ul, ol, table)';
+  // Where the selection is, as (text node number, offset): tidying only moves text nodes, it
+  // never splits, joins or reorders them, so the same numbers find the same places afterwards.
+  function selOffsets(ed) {
+    const s = getSelection(); if (!s.rangeCount || !ed.contains(s.anchorNode)) return null;
+    const r = s.getRangeAt(0), texts = [];
+    const walker = document.createTreeWalker(ed, NodeFilter.SHOW_TEXT); let n;
+    while ((n = walker.nextNode())) texts.push(n);
+    const at = (node, off) => {
+      if (node.nodeType === 3) return { i: texts.indexOf(node), o: off };
+      const after = node.childNodes[off];       // between elements: just before the next text
+      if (after) { const w = document.createTreeWalker(ed, NodeFilter.SHOW_TEXT); w.currentNode = after;
+        const first = after.nodeType === 3 ? after : w.nextNode(); if (first && texts.indexOf(first) >= 0) return { i: texts.indexOf(first), o: 0 }; }
+      return null;
+    };
+    const a = at(r.startContainer, r.startOffset), b = at(r.endContainer, r.endOffset);
+    return a && b ? { a, b } : null;
+  }
+  function setOffsets(ed, o) {
+    if (!o) return;
+    const texts = []; const walker = document.createTreeWalker(ed, NodeFilter.SHOW_TEXT); let n;
+    while ((n = walker.nextNode())) texts.push(n);
+    const pa = texts[o.a.i], pb = texts[o.b.i];
+    if (!pa || !pb) return;
+    const r = document.createRange();
+    try { r.setStart(pa, Math.min(o.a.o, pa.length)); r.setEnd(pb, Math.min(o.b.o, pb.length)); } catch (e) { return; }
+    const s = getSelection(); s.removeAllRanges(); s.addRange(r);
+  }
+  function unwrap(el) { while (el.firstChild) el.before(el.firstChild); el.remove(); }
+  function tidy(ed) {
+    if (!ed || !ed.querySelector(UNTIDY)) return false;
+    const o = selOffsets(ed);
+    for (const el of Array.from(ed.querySelectorAll('[style]'))) el.removeAttribute('style');
+    for (const el of Array.from(ed.querySelectorAll('span, font, a'))) unwrap(el);
+    for (const h of Array.from(ed.querySelectorAll('h1, h2, h3, pre'))) {
+      if (h.isConnected && h.querySelector('ul, ol, table, div, h1, h2, h3, pre')) unwrap(h);
+    }
+    for (const d of Array.from(ed.querySelectorAll(':scope > div'))) {
+      if (d.querySelector(':scope > :is(ul, ol, table)')) unwrap(d);
+    }
+    for (const t of Array.from(ed.querySelectorAll('td table'))) {
+      if (!t.isConnected) continue;
+      const box = document.createElement('div'); box.innerHTML = sanitize(t.outerHTML, true);
+      while (box.firstChild) t.before(box.firstChild);
+      t.remove();
+    }
+    setOffsets(ed, o);
+    return true;
   }
   function edHTML(el) {
     const html = sanitize(el.innerHTML);
@@ -247,7 +323,8 @@
     $('binCount').textContent = items.length;
     $('binBtn').setAttribute('aria-label', 'Recently deleted, ' + pagesWord(items.length));
     const list = $('binList');
-    list.innerHTML = items.map((t) => '<div class="bin-item"><span title="' + esc(t.title) + '">' + esc(t.title) + '</span>' +
+    list.innerHTML = items.map((t) => '<div class="bin-item"><button type="button" class="bin-open" data-preview="' + esc(t.id) + '"' +
+      (preview && preview.id === t.id ? ' aria-current="true"' : '') + ' title="Read “' + esc(t.title) + '” without putting it back">' + esc(t.title) + '</button>' +
       '<button type="button" data-restore="' + esc(t.id) + '" aria-label="Put back ' + esc(t.title) + '">Put back</button></div>').join('') +
       '<p class="bin-note">' + (items.length ? 'Pages stay here for ' + (nb.keepDays || 30) + ' days, then they are removed for good.' : 'Nothing here.') + '</p>';
   }
@@ -255,12 +332,55 @@
     const open = $('binList').hidden;
     $('binList').hidden = !open; $('binBtn').setAttribute('aria-expanded', String(open));
   });
-  $('binList').addEventListener('click', (e) => { const b = e.target.closest('[data-restore]'); if (b) restore([b.dataset.restore], true); });
+  $('binList').addEventListener('click', (e) => {
+    const b = e.target.closest('[data-restore]'); if (b) { endPreview(); restore([b.dataset.restore], true); return; }
+    const v = e.target.closest('[data-preview]'); if (v) previewTrash(v.dataset.preview);
+  });
+
+  // ---------- reading a deleted page without putting it back ----------
+  let preview = null;                               // { id, back: the page that was open }
+  async function previewTrash(tid) {
+    await flushTitle(); if (!(await flush())) return;
+    if (rec.mr) await stopMemo(false);
+    if (ink.on) setScribble(false);
+    let doc;
+    try { doc = await call('read_trash', tid); } catch (e) { return; }
+    if (!preview) preview = { back: activeId };
+    preview.id = tid;
+    activeId = null;
+    loadDoc(doc, null);
+    setEditable(false);
+    document.querySelector('.sheet').classList.add('previewing');
+    const when = fmtShort(doc.deleted);
+    $('previewText').textContent = '“' + doc.title + '” is in Recently deleted' + (doc.folder ? ' (from ' + doc.folder + ')' : '') + (when ? ', since ' + when : '') + '. You can read it here.';
+    $('previewBar').hidden = false;
+    renderHead(); renderTree();
+    $('pageName').textContent = doc.title + ' (Recently deleted)';
+    if (api.set_title) api.set_title(doc.title + ' (Recently deleted)');
+    $('previewRestore').focus();
+  }
+  function endPreview() {
+    if (!preview) return null;
+    const back = preview.back; preview = null;
+    document.querySelector('.sheet').classList.remove('previewing');
+    $('previewBar').hidden = true;
+    setEditable(!ink.on);
+    return back;
+  }
+  async function closePreview() {
+    const back = endPreview();
+    const first = nb.folders.find((f) => f.pages.length);
+    if (back && findPage(back)) await openPage(back);
+    else if (first) await openPage(first.pages[0].id);
+    else { loadDoc({ text: '', margin: '', ink: [] }); renderHead(); renderTree(); }
+  }
+  $('previewClose').addEventListener('click', closePreview);
+  $('previewRestore').addEventListener('click', () => { const id = preview && preview.id; endPreview(); if (id) restore([id], true); });
 
   function renderHead() {
     const hit = activeId && findPage(activeId);
-    $('empty').hidden = !!hit;
-    for (const id of ['formatBtn', 'checkBtn', 'scribbleBtn', 'deletePageBtn']) $(id).disabled = !hit;
+    $('empty').hidden = !!hit || !!preview;
+    for (const id of ['formatBtn', 'checkBtn', 'scribbleBtn', 'memoBtn', 'deletePageBtn']) $(id).disabled = !hit;
     $('folderDot').style.setProperty('--fc', hit ? hit.folder.color : 'transparent');
     $('crumbSep').hidden = !hit;
     $('folderLabel').textContent = hit ? hit.folder.name : '';
@@ -293,6 +413,7 @@
       editor.insertAdjacentHTML('afterbegin', '<h1>' + esc(hit.page.title) + '</h1>');
     }
     if (hit && !editor.textContent.trim() && !editor.querySelector('li, table')) editor.innerHTML = '<h1><br></h1>';
+    decorateMemos();
     ink.strokes = Array.isArray(doc.ink) ? doc.ink : [];
     renderInk(); updateEmpty(); syncInkButtons();
     activeHistId = pageId || null;
@@ -305,6 +426,8 @@
   let activeHistId = null;
 
   async function openPage(id, opts) {
+    if (rec.mr) await stopMemo(false);              // a recording is saved on the page it was started on
+    endPreview();
     await flushTitle();
     if (!(await flush())) { reportSaveError(new Error('The last change could not be saved.'), true); return false; }
     const hit = findPage(id);
@@ -639,6 +762,15 @@
       } });
       items.push('-');
     }
+    if (!api.mock && api.window_frame) {
+      const dots = document.body.classList.contains('has-dots');
+      items.push({ label: 'Window buttons at the top left', checked: dots, run: async () => {
+        const on = !!(await call('set_pref', 'frame', dots ? 'windows' : 'dots'));
+        showDots(on);
+        if (!dots && !on) toast('The Windows title bar could not be hidden on this computer.');
+      } });
+      items.push('-');
+    }
     if (!api.mock) {
       items.push({ label: 'Open notes folder', run: () => call('open_notes_folder') });
       items.push({ label: 'Change notes folder…', run: changeFolder });
@@ -845,6 +977,7 @@
   function bindEditor(el) {
     el.addEventListener('focus', () => { lastEd = el; if (Date.now() - lastKeyNav < 400) showKbTip(); });
     el.addEventListener('input', (e) => {
+      if (!e.isComposing) tidy(el);
       if (e.inputType === 'insertParagraph') {           // a new checklist line starts unticked
         const li = blockAt('LI');
         if (li && li.hasAttribute('data-checked') && !li.textContent.trim()) li.removeAttribute('data-checked');
@@ -864,10 +997,36 @@
       e.preventDefault();
       if (hist.pending) histCommit();
       const html = cd.getData('text/html'), text = cd.getData('text/plain');
-      if (html && !pastePlain) document.execCommand('insertHTML', false, sanitize(html));
-      else document.execCommand('insertText', false, text);
+      if (html && !pastePlain) {
+        // No tables inside a table, and none in the margin: they come in as lines of text.
+        let clean = sanitize(html, el === margin || !!blockAt('TD'));
+        // A word or one line goes into the line you are on, in that line's style (bold and
+        // italic stay). Whole lines pasted onto an empty line keep their own style.
+        const box = document.createElement('div'); box.innerHTML = clean;
+        const only = box.childNodes.length === 1 && box.firstChild.nodeType === 1 && /^(DIV|H1|H2|H3|PRE)$/.test(box.firstChild.tagName) ? box.firstChild : null;
+        const line = lineAt(el);
+        if (only && !(line && !line.textContent.trim() && only.tagName !== 'DIV')) clean = only.innerHTML;
+        if (clean.replace(/<br>/g, '')) document.execCommand('insertHTML', false, clean);
+        else if (text) document.execCommand('insertText', false, text);
+      } else if (text) document.execCommand('insertText', false, text);
       pastePlain = false;
-      histCommit();
+      tidy(el); afterEdit(); histCommit();
+    });
+    // Copying puts plain, tidy text on the clipboard (no handwriting font or paper colour in
+    // other programs), and the page's own styles for pasting back into NiSH Notes.
+    const copyOut = (e) => {
+      const s = getSelection(); if (!s.rangeCount || s.isCollapsed || !el.contains(s.anchorNode)) return false;
+      const box = document.createElement('div'); box.appendChild(s.getRangeAt(0).cloneContents());
+      e.clipboardData.setData('text/html', sanitize(box.innerHTML));
+      e.clipboardData.setData('text/plain', s.toString());
+      e.preventDefault();
+      return true;
+    };
+    el.addEventListener('copy', copyOut);
+    el.addEventListener('cut', (e) => {
+      if (!copyOut(e) || el.contentEditable !== 'true') return;
+      if (hist.pending) histCommit();
+      document.execCommand('delete'); tidy(el); afterEdit(); histCommit();
     });
     el.addEventListener('mousedown', (e) => {                 // click a checklist circle to tick it
       const li = e.target.closest && e.target.closest('ul.checklist > li');
@@ -884,6 +1043,13 @@
   }
   let pastePlain = false;
 
+  function lineAt(ed) {                         // the line (block) the cursor is in
+    const s = getSelection(); if (!s.rangeCount) return null;
+    let n = s.anchorNode;
+    while (n && n.parentNode !== ed) n = n.parentNode;
+    if (n && n.nodeType === 1 && /^(UL|OL|TABLE)$/.test(n.tagName)) { let m = s.anchorNode; while (m && !/^(LI|TD)$/.test(m.nodeName)) m = m.parentNode; return m; }
+    return n && n.nodeType === 1 ? n : null;
+  }
   function selectionIn(el) {
     const s = getSelection();
     return s.rangeCount && el.contains(s.anchorNode) ? s : null;
@@ -939,10 +1105,20 @@
     if (hist.pending) histCommit();
     document.execCommand('styleWithCSS', false, false);
     document.execCommand(cmd, false, val);
-    afterEdit(); histCommit();
+    tidy(activeEd()); afterEdit(); histCommit();
   }
   function afterEdit() { updateEmpty(); changed(); if (!fmt.hidden) syncFormat(); queueChips(); titleChanged(); }
-  function setBlock(tag) { exec('formatBlock', tag === 'div' ? 'div' : tag); }
+  function setBlock(tag) {
+    if (!activeId || ink.on) return;
+    ensureFocus();
+    const list = currentList();
+    if (list) {                                // a list line becomes an ordinary line first (a heading can't hold a list)
+      if (hist.pending) histCommit();
+      document.execCommand(list.el.tagName === 'OL' ? 'insertOrderedList' : 'insertUnorderedList');
+      if (currentList()) { exec('outdent'); }
+    }
+    exec('formatBlock', tag === 'div' ? 'div' : tag);
+  }
   function setList(kind) {
     if (!activeId || ink.on) return;
     ensureFocus();
@@ -951,6 +1127,7 @@
     const want = kind === 'check' ? 'checklist' : kind === 'dashed' ? 'dashed' : '';
     const ed = activeEd();
     if (hist.pending) histCommit();
+    if (!cur && currentBlock() !== 'div') document.execCommand('formatBlock', false, 'div');   // list lines are body text
     if (kind === 'number' || !cur || cur.el.tagName === 'OL') {
       const lists = new Map(Array.from(ed.querySelectorAll('ul, ol')).map((l) => [l, l.className]));
       const items = new Set(ed.querySelectorAll('li'));
@@ -963,7 +1140,7 @@
     } else {                                   // switch the whole list to another kind
       cur.el.removeAttribute('class'); if (want) cur.el.className = want;
     }
-    afterEdit(); histCommit();
+    tidy(ed); afterEdit(); histCommit();
   }
   function splitNewItems(list, oldItems, want) {
     const fresh = Array.from(list.children).filter((li) => li.tagName === 'LI' && !oldItems.has(li));
@@ -1129,7 +1306,7 @@
     hist.i = j;
     const st = hist.stack[j];
     editor.innerHTML = st.text; margin.innerHTML = st.margin; ink.strokes = st.ink.slice();
-    renderInk(); updateEmpty(); restoreCaret(st.caret);
+    decorateMemos(); renderInk(); updateEmpty(); restoreCaret(st.caret);
     changed(); syncUndo(); placeChips();
     if (!fmt.hidden) syncFormat();
     return true;
@@ -1397,6 +1574,150 @@
     $('scribbleBtn').addEventListener('click', () => setScribble(!ink.on));
   })();
 
+  // ---------- voice memos, in the margin ----------
+  // A recording goes into the margin on the line you were writing on. The sound is a file in the
+  // notes folder (_Voice memos); the margin keeps a small "Voice memo 0:12" line that plays it.
+  const rec = { mr: null, stream: null, chunks: [], start: 0, timer: 0, cancel: false, line: 0, pageId: null, done: null };
+  const memoUrls = new Map();
+  const player = new Audio();
+  let playing = null;
+  function decorateMemos() {
+    margin.querySelectorAll('[data-memo]').forEach((m) => {
+      m.contentEditable = 'false'; m.tabIndex = 0; m.setAttribute('role', 'button');
+      const sec = +m.dataset.sec || 0;
+      m.textContent = memoLabel(sec).slice(11);                  // the margin is narrow: the length is enough
+      m.title = memoLabel(sec);
+      m.setAttribute('aria-label', 'Play voice memo, ' + (sec < 60 ? sec + ' seconds' : memoLabel(sec).slice(11)));
+    });
+  }
+  function caretLine() {
+    const s = getSelection(), top = leaf.getBoundingClientRect().top;
+    let y = null;
+    if (s.rangeCount && (editor.contains(s.anchorNode) || margin.contains(s.anchorNode))) {
+      const r = s.getRangeAt(0), rects = r.getClientRects();
+      const box = rects.length ? rects[0] : (s.anchorNode.nodeType === 1 ? s.anchorNode : s.anchorNode.parentNode).getBoundingClientRect();
+      y = box.top + 4;
+    }
+    if (y === null) y = paper.getBoundingClientRect().top + 24;
+    return Math.max(0, Math.floor((y - top - 8) / 32));
+  }
+  async function startMemo() {
+    if (!activeId || ink.on || rec.mr) return;
+    if (!navigator.mediaDevices || !window.MediaRecorder) { toast('Recording isn’t available on this computer.'); return; }
+    rec.line = caretLine(); rec.pageId = activeId;
+    let stream;
+    try { stream = await navigator.mediaDevices.getUserMedia({ audio: { echoCancellation: true, noiseSuppression: true } }); } catch (e) {
+      toast(e && e.name === 'NotAllowedError' ? 'NiSH Notes may not use the microphone. Turn it on in Windows Settings › Privacy › Microphone.'
+        : 'No microphone found. Plug one in and try again.');
+      return;
+    }
+    const type = ['audio/webm;codecs=opus', 'audio/webm', 'audio/ogg;codecs=opus'].find((t) => MediaRecorder.isTypeSupported(t));
+    const mr = new MediaRecorder(stream, type ? { mimeType: type } : undefined);
+    Object.assign(rec, { mr, stream, chunks: [], cancel: false, start: Date.now() });
+    rec.done = new Promise((resolve) => { mr.onstop = () => finishMemo().then(resolve, resolve); });
+    mr.ondataavailable = (e) => { if (e.data && e.data.size) rec.chunks.push(e.data); };
+    mr.start(1000);
+    const tick = () => { const sec = Math.floor((Date.now() - rec.start) / 1000); $('recText').textContent = 'Recording ' + memoLabel(sec).slice(11); };
+    tick(); rec.timer = setInterval(tick, 500);
+    $('recBar').hidden = false; $('memoBtn').setAttribute('aria-pressed', 'true');
+    $('recStop').focus();
+  }
+  function stopMemo(cancel) {
+    if (!rec.mr) return Promise.resolve();
+    rec.cancel = !!cancel;
+    const done = rec.done;
+    if (rec.mr.state !== 'inactive') rec.mr.stop();
+    return done;
+  }
+  const toB64 = (blob) => new Promise((resolve, reject) => { const r = new FileReader(); r.onload = () => resolve(String(r.result).split(',')[1] || ''); r.onerror = reject; r.readAsDataURL(blob); });
+  async function finishMemo() {
+    clearInterval(rec.timer);
+    rec.stream.getTracks().forEach((t) => t.stop());
+    const mr = rec.mr; rec.mr = null;
+    $('recBar').hidden = true; $('memoBtn').setAttribute('aria-pressed', 'false');
+    if (rec.cancel || !rec.chunks.length) { toast(rec.cancel ? 'Recording thrown away.' : 'Nothing was recorded.'); return; }
+    const sec = Math.max(1, Math.round((Date.now() - rec.start) / 1000));
+    const blob = new Blob(rec.chunks, { type: (mr.mimeType || 'audio/webm').split(';')[0] });
+    const id = 'm' + Date.now().toString(36) + Math.random().toString(36).slice(2, 8);
+    try { await call('save_memo', id, blob.type, await toB64(blob)); } catch (e) { return; }
+    memoUrls.set(id, URL.createObjectURL(blob));
+    if (activeId !== rec.pageId) { toast('Recording saved, but its page is closed.'); return; }
+    insertMemo(id, sec, rec.line);
+    toast('Voice memo saved in the margin.');
+  }
+  function insertMemo(id, sec, line) {
+    if (hist.pending) histCommit();
+    const memo = document.createElement('div');
+    memo.dataset.memo = id; memo.dataset.sec = String(sec);
+    const lineOf = (el) => Math.round((el.offsetTop - margin.offsetTop - 8) / 32);
+    let placed = false;
+    for (const k of Array.from(margin.children)) {
+      const l = lineOf(k);
+      if (l === line && !k.textContent.trim() && !k.dataset.memo && !k.querySelector('li, table')) { k.replaceWith(memo); placed = true; break; }
+      if (l >= line) { k.before(memo); placed = true; break; }
+    }
+    if (!placed) {
+      const last = margin.lastElementChild;
+      let count = last ? lineOf(last) + Math.max(1, Math.round(last.offsetHeight / 32)) : 0;
+      for (; count < line; count++) { const d = document.createElement('div'); d.appendChild(document.createElement('br')); margin.appendChild(d); }
+      margin.appendChild(memo);
+    }
+    decorateMemos(); updateEmpty(); changed(); histCommit();
+  }
+  async function playMemo(el) {
+    const id = el.dataset.memo;
+    if (playing === el && !player.paused) { player.pause(); return; }
+    let url = memoUrls.get(id);
+    if (!url) {
+      try {
+        const m = await api.read_memo(id);
+        const bytes = Uint8Array.from(atob(m.data), (c) => c.charCodeAt(0));
+        url = URL.createObjectURL(new Blob([bytes], { type: m.mime }));
+        memoUrls.set(id, url);
+      } catch (e) {
+        el.classList.add('missing');
+        toast('This recording is missing from the notes folder (_Voice memos).');
+        return;
+      }
+    }
+    if (playing) playing.classList.remove('playing');
+    playing = el; el.classList.add('playing');
+    player.src = url;
+    try { await player.play(); } catch (e) { el.classList.remove('playing'); toast('Could not play the recording: ' + errText(e)); }
+  }
+  for (const ev of ['pause', 'ended']) player.addEventListener(ev, () => { if (playing) playing.classList.remove('playing'); if (ev === 'ended') playing = null; });
+  document.addEventListener('mousedown', (e) => {
+    const m = e.target.closest && e.target.closest('#margin [data-memo]');
+    if (m && e.button === 0 && !ink.on) { e.preventDefault(); playMemo(m); }
+  });
+  document.addEventListener('keydown', (e) => {
+    const m = e.target.closest && e.target.closest('#margin [data-memo]');
+    if (m && (e.key === 'Enter' || e.key === ' ')) { e.preventDefault(); e.stopPropagation(); playMemo(m); }
+    else if (m && (e.key === 'Delete' || e.key === 'Backspace') && !preview) { e.preventDefault(); e.stopPropagation(); removeMemo(m); }
+  }, true);
+  document.addEventListener('contextmenu', (e) => {
+    const m = e.target.closest && e.target.closest('#margin [data-memo]');
+    if (!m || preview) return;
+    e.preventDefault();
+    openMenu(e.clientX, e.clientY, [
+      { label: player.paused || playing !== m ? 'Play' : 'Pause', run: () => playMemo(m) },
+      '-',
+      { label: 'Delete voice memo', danger: true, keys: 'Del', aria: 'Delete', run: () => removeMemo(m) },
+    ], m);
+  });
+  function removeMemo(m) {
+    if (hist.pending) histCommit();
+    if (playing === m) { player.pause(); playing = null; }
+    const empty = document.createElement('div'); empty.appendChild(document.createElement('br'));
+    m.replaceWith(empty);                           // keeps the margin notes below it on their lines
+    updateEmpty(); changed(); histCommit();
+    toast('Voice memo deleted. Ctrl+Z brings it back.');
+  }
+  $('memoBtn').addEventListener('mousedown', (e) => e.preventDefault());   // keep the cursor's line
+  $('memoBtn').addEventListener('click', () => { if (rec.mr) stopMemo(false); else startMemo(); });
+  $('recStop').addEventListener('click', () => stopMemo(false));
+  $('recCancel').addEventListener('click', () => stopMemo(true));
+
   // ---------- search ----------
   function clearSearch(keepText) {
     if (!keepText) $('search').value = '';
@@ -1435,12 +1756,15 @@
   function setSide(show) {
     document.body.classList.toggle('side-hidden', !show);
     document.body.classList.toggle('side-shown', !!show && narrow());
+    $('sideBack').hidden = !(show && narrow());
     if (!narrow()) api.set_pref('side', show ? 'shown' : 'hidden');
     syncSideBtn();
     if (show) { const t = tree.querySelector('.page.active .page-btn') || tree.querySelector('.folder-head'); if (t && narrow()) t.focus(); }
   }
   $('sideBtn').addEventListener('click', () => setSide(!sideVisible()));
-  window.addEventListener('resize', () => { if (!narrow()) document.body.classList.remove('side-shown'); syncSideBtn(); });
+  window.addEventListener('resize', () => { if (!narrow()) { document.body.classList.remove('side-shown'); $('sideBack').hidden = true; } syncSideBtn(); });
+  $('sideClose').addEventListener('click', () => { setSide(false); $('sideBtn').focus(); });
+  $('sideBack').addEventListener('mousedown', (e) => { e.preventDefault(); setSide(false); });
 
   // ---------- keyboard: F6 moves between areas, a tip says how to leave the page ----------
   let lastKeyNav = 0;
@@ -1490,6 +1814,8 @@
       if (!menu.hidden) { closeMenu(true); return; }
       if (!fmt.hidden) { closeFormat(true); return; }
       if (ink.on) { setScribble(false); return; }
+      if (rec.mr) { stopMemo(false); return; }
+      if (preview) { closePreview(); return; }
       if (!$('kbTip').hidden) { hideKbTip(); return; }
       if (narrow() && document.body.classList.contains('side-shown')) { setSide(false); return; }
     }
@@ -1509,6 +1835,7 @@
       if (k === 'z' && !e.shiftKey) undo(); else redo();
       return;
     }
+    if ((k === 'w' || k === 'q') && !e.shiftKey) { e.preventDefault(); toBackground(); return; }
     if (k === 'n' && e.shiftKey) { e.preventDefault(); newFolder(); }
     else if (k === 'n') { e.preventDefault(); newPage(); }
     else if (k === 'f') { e.preventDefault(); $('search').focus(); $('search').select(); }
@@ -1517,6 +1844,37 @@
   });
   document.addEventListener('visibilitychange', () => { if (document.hidden) { flushTitle(); flush(); } });
   window.addEventListener('pagehide', () => { flushTitle(); flush(); });
+
+  // ---------- the window: three dots instead of the Windows title bar ----------
+  function showDots(on) { document.body.classList.toggle('has-dots', !!on); $('titlebar').hidden = !on; }
+  async function setupFrame() {
+    if (api.mock) { if (/[?&]dots\b/.test(location.search)) showDots(true); return; }   // preview of the window buttons
+    if (!api.window_frame) return;
+    try { showDots(await api.window_frame()); } catch (e) { showDots(false); }
+  }
+  async function saveAll() { await flushTitle(); await flush(); }
+  async function toBackground() {           // Ctrl+W, Ctrl+Q: the window closes, NiSH Notes keeps running
+    if (rec.mr) await stopMemo(false);
+    await saveAll();
+    if (api.mock) { toast('In the app, Ctrl+W closes the window and NiSH Notes keeps running in the tray.'); return; }
+    api.window_hide();
+  }
+  const winCall = (name) => { if (api.mock) toast('In the app, this button works on the window.'); else api[name](); };
+  $('winClose').addEventListener('click', async () => { if (rec.mr) await stopMemo(false); await saveAll(); winCall('window_close'); });
+  $('winMin').addEventListener('click', () => winCall('window_minimize'));
+  $('winZoom').addEventListener('click', () => winCall('window_zoom'));
+  let deskDown = 0;
+  document.addEventListener('pointerdown', (e) => {          // the desk around the page moves the window
+    if (e.button !== 0 || !document.body.classList.contains('has-dots')) return;
+    if (e.target !== document.querySelector('.app') && e.target !== $('titlebar')) return;
+    e.preventDefault();
+    const t = Date.now();
+    if (t - deskDown < 450) { deskDown = 0; if (!api.mock) api.window_zoom(); return; }   // double-click: fill the screen
+    deskDown = t;
+    if (!api.mock) api.window_move();
+  });
+  window.addEventListener('blur', () => document.body.classList.add('window-blurred'));
+  window.addEventListener('focus', () => document.body.classList.remove('window-blurred'));
 
   // ---------- start ----------
   function whenApi() {
@@ -1538,6 +1896,7 @@
     const info = await api.init();
     nb = info.notebook; version = info.version || ''; prefs = info.prefs || {};
     applyFont(info.prefs && info.prefs.font);
+    setupFrame();
     if (prefs.side === 'hidden') document.body.classList.add('side-hidden');
     syncSideBtn();
     const last = info.prefs && info.prefs.lastPage;
@@ -1709,6 +2068,42 @@
       check('folder colour', (await api.snapshot()).folders.find((f) => f.id === a).color === COLORS[3]);
       setSide(false); const hidden = !sideVisible(); setSide(true);
       check('hide and show the folders', hidden && sideVisible() && $('sideBtn').getAttribute('aria-pressed') === 'true');
+      // 1.5: tidy editing
+      const tp = await newPage(a, 'Tidy');
+      editor.innerHTML = '<h1>Tidy</h1><h2>Sub</h2><div>body text</div>';
+      editor.focus(); caretIn(editor.querySelector('div'), false);
+      editor.querySelector('h2').insertAdjacentHTML('beforeend', '<span style="font-size: 21px;">x</span>');
+      editor.dispatchEvent(new InputEvent('input', { bubbles: true, inputType: 'deleteContentBackward' }));
+      check('joining a line onto a heading leaves no small text inside it', !editor.querySelector('span, [style]') && editor.querySelector('h2').textContent === 'Subx');
+      editor.innerHTML = '<h1>Tidy</h1><table><tbody><tr><td>a</td><td>b</td></tr></tbody></table><div><br></div>';
+      caretIn(editor.querySelector('td'), true);
+      const dt = new DataTransfer(); dt.setData('text/html', '<table><tr><td>x</td><td>y</td></tr></table>'); dt.setData('text/plain', 'x\ty');
+      editor.dispatchEvent(new ClipboardEvent('paste', { clipboardData: dt, bubbles: true, cancelable: true }));
+      check('a table pasted into a table cell comes in as text', editor.querySelectorAll('table').length === 1 && editor.querySelector('td').textContent.includes('x\ty'));
+      editor.innerHTML = '<h1>Tidy</h1><h2>Heading line</h2>';
+      selectText(editor, 'Heading line'); setList('bullet');
+      check('a list made from a heading is a list of body text', editor.querySelector('ul > li') && !editor.querySelector('h2') && !editor.querySelector('h2 ul, :scope > div > ul'));
+      selectText(editor, 'Heading line'); setBlock('h2');
+      check('a heading made from a list line leaves the list', editor.querySelector('h2') && !editor.querySelector('h2 ul, ul h2'));
+      // voice memo in the margin (the recording itself needs a microphone, so the file is made here)
+      const mid = 'mtest' + Date.now().toString(36);
+      await api.save_memo(mid, 'audio/webm', btoa('not really audio'));
+      insertMemo(mid, 75, 2);
+      const memoEl = margin.querySelector('[data-memo]');
+      check('a voice memo sits in the margin on its line', memoEl && memoEl.textContent === '1:15' && Math.round((memoEl.offsetTop - margin.offsetTop - 8) / 32) === 2 && memoEl.contentEditable === 'false');
+      await sleep(600); await save.chain;
+      const back = await api.read_page(tp);
+      check('the voice memo is saved with the page, the sound next to it', back.margin.includes('data-memo="' + mid + '"') && (await api.read_memo(mid)).data === btoa('not really audio'));
+      // reading a deleted page without putting it back
+      await deletePage(tp); hideUndo();
+      const tid = (nb.trash || []).find((x) => x.title === 'Tidy').id;
+      await previewTrash(tid);
+      check('Recently deleted: read a page without putting it back', !!preview && editor.contentEditable === 'false' && editor.textContent.includes('Heading line') && !$('previewBar').hidden && !findPage(tp) && $('empty').hidden);
+      await closePreview();
+      check('closing the preview goes back to a page', !preview && $('previewBar').hidden && editor.contentEditable === 'true' && !!activeId);
+      await previewTrash(tid); $('previewRestore').click(); await sleep(400);
+      check('Put back from the preview', !preview && !!activeId && firstLine() === 'Tidy');
+      await deletePage(activeId); hideUndo();
       await openPage(pid);
       check('reopening a page shows everything', editor.textContent.includes('Hello from the smoke test') && margin.textContent === 'Margin note' &&
         inkSvg.querySelectorAll('path').length === 2 && !!editor.querySelector('table') && firstLine() === 'Renamed page');
@@ -1720,6 +2115,6 @@
   }
 
   function setKeepRunning(on) { prefs.keepRunning = !!on; }
-  window.NN = { ready: false, setKeepRunning, selfTest, newPage, newFolder, openPage, movePage, moveFolder, deletePage, sanitize };
+  window.NN = { ready: false, setKeepRunning, selfTest, newPage, newFolder, openPage, movePage, moveFolder, deletePage, sanitize, showDots };
   start().catch((e) => toast('NiSH Notes could not start: ' + errText(e)));
 })();
