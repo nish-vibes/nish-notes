@@ -61,25 +61,31 @@ jobs:
       - name: Build exe
         run: pyinstaller NiSHNotes.spec --noconfirm
 
-      - name: Mark the files as downloaded, like unzipping in Explorer does
+      - name: Mark the app's files as downloaded, like unzipping in Explorer does
         shell: pwsh
+        timeout-minutes: 3
         run: |
-          Get-ChildItem "dist\NiSH Notes" -Recurse -File | ForEach-Object {
-            Set-Content -LiteralPath $_.FullName -Stream Zone.Identifier -Value "[ZoneTransfer]`r`nZoneId=3"
-          }
-          # Without the fix the app can't start from such files (shown, not required):
+          # the exe and the .NET parts that refuse to load when marked (marking every file is slow)
+          $app = "dist\NiSH Notes"
+          $files = @(Get-Item "$app\NiSHNotes.exe") + @(Get-ChildItem "$app\_internal" -Recurse -File -Include *.dll | Where-Object { $_.FullName -match 'pythonnet|clr_loader|webview' })
+          foreach ($f in $files) { Set-Content -LiteralPath $f.FullName -Stream Zone.Identifier -Value "[ZoneTransfer]`r`nZoneId=3" }
+          Write-Output "marked $($files.Count) files"
+
+      - name: Without the fix, from marked files (shown, not required)
+        shell: pwsh
+        timeout-minutes: 3
+        continue-on-error: true
+        run: |
           $env:NN_NO_UNBLOCK = "1"
           $out = Join-Path $PWD "blocked-check"
           $p = Start-Process -FilePath "dist\NiSH Notes\NiSHNotes.exe" -ArgumentList "--smoketest", "`"$out`"" -PassThru
-          if (-not $p.WaitForExit(60000)) { $p.Kill(); Write-Output "without unblocking: still running after 60 s (a message box?)" }
-          else { Write-Output "without unblocking: exit code $($p.ExitCode)" }
-          Get-Process NiSHNotes -ErrorAction SilentlyContinue | Stop-Process -Force
-          Remove-Item Env:NN_NO_UNBLOCK
-          $marked = (Get-Item "dist\NiSH Notes\_internal\pythonnet\runtime\Python.Runtime.dll" -Stream * | Where-Object Stream -eq "Zone.Identifier").Count
-          Write-Output "Python.Runtime.dll marked: $marked"
+          if ($p.WaitForExit(45000)) { Write-Output "without unblocking: exit code $($p.ExitCode)" }
+          else { Write-Output "without unblocking: still running after 45 s (most likely the error message box)" }
+          Get-Process NiSHNotes -ErrorAction SilentlyContinue | Stop-Process -Force -ErrorAction SilentlyContinue
 
       - name: GUI smoke test (opens the window and clicks through everything)
         shell: pwsh
+        timeout-minutes: 8
         run: |
           $out = Join-Path $PWD "gui-smoke"
           $p = Start-Process -FilePath "dist\NiSH Notes\NiSHNotes.exe" -ArgumentList "--smoketest", "`"$out`"" -PassThru
