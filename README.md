@@ -25,11 +25,13 @@ and settings stay where they were; delete the old `NiSHNotes.exe` once the new o
   of a page is its name, so there is nothing to fill in before you start writing.
   Everything is **saved automatically** while you type. If a save ever fails (a USB stick was
   pulled out, say) a popup tells you, and the app keeps trying.
-- **A light editing toolbar** at the top of the page: paragraph style (Title, Heading, Subheading,
-  Body, Monostyled; the button shows the style you're in), **bold**, *italic*, underline,
-  strikethrough, bulleted and numbered lists, checklist and table. The style menu also has dashed
-  lists and indenting. In a narrow window the text buttons move into the style menu. Click a
-  checklist circle to tick it off.
+- **A light editing toolbar** at the top of the page:
+  - **Style** shows the style you're in and opens a menu with **Title**, **Subtitle** and **Body**, and the
+    **font** for your notes: Handwriting, Clean, Book or Typewriter. The sizes of the styles stay the
+    same; only the typeface changes.
+  - **B** and *I*, and **⋯** for underline, strikethrough, superscript (Ctrl+.) and subscript (Ctrl+,).
+  - **Lists**: bulleted, numbered and checklist, plus indenting. Click a checklist circle to tick it off.
+  - **Table.**
 - **Quiet tools.** All tools are faint until the pointer comes near them (or you Tab to them),
   then they light up, so the page stays calm while you write.
 - **Undo and Redo** (the arrows at the top, or Ctrl+Z / Ctrl+Y) go back through everything on the

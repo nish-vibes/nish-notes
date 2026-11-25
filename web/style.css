@@ -32,6 +32,8 @@
   --margin-size: 16px;
 }
 .font-clean { --body-size: 17px; --margin-size: 14px; }
+.font-serif { --body-size: 19px; --margin-size: 15px; }
+.font-mono { --body-size: 16px; --margin-size: 13px; }
 
 * { box-sizing: border-box; }
 html, body { height: 100%; }
@@ -76,17 +78,27 @@ kbd { font: 11px var(--ui); color: var(--faint); }
 .tool.mark { font: 17px/1 Georgia, "Times New Roman", serif; }
 .tool.mark b { font-weight: 700; }
 .style-pick { width: auto; min-width: 98px; padding: 0 6px 0 10px; gap: 4px; justify-content: space-between; font: 600 13px/1 var(--ui); }
-.style-pick .chev { width: 15px; height: 15px; }
+.style-pick .chev, .list-pick .chev { width: 15px; height: 15px; }
+.list-pick { width: auto; padding: 0 4px 0 7px; gap: 1px; }
+/* the menus preview what they do */
+.menu .item.st-title .label { font-size: 18px; font-weight: 700; }
+.menu .item.st-sub .label { font-size: 15px; font-weight: 700; }
+.menu .item.font-item-hand .label { font-family: var(--hand); font-size: 16px; }
+.menu .item.font-item-clean .label { font-family: var(--ui); }
+.menu .item.font-item-serif .label { font-family: "Iowan Old Style", Cambria, Georgia, serif; font-size: 15px; }
+.menu .item.font-item-mono .label { font-family: var(--mono); font-size: 13px; }
+.menu .item.mk-u .label { text-decoration: underline; }
+.menu .item.mk-s .label { text-decoration: line-through; }
+.menu .item kbd { margin-left: auto; padding-left: 16px; }
+.menu .item.has-tick .check { margin-left: 0; order: -1; }
+.menu .item.pad-tick { padding-left: 36px; }      /* lines up with the items that have a tick */
+@media (max-width: 1100px) {
+  .tool:not(.style-pick):not(.list-pick) { width: 30px; }
+  .style-pick { min-width: 78px; }
+  .head-tools .tool-gap { width: 2px; }
+}
 .tool-group { display: inline-flex; gap: 0; }
 .tool-gap { width: 6px; flex: none; }
-#fmt .narrow-only { display: none; }
-@media (min-width: 1181px) and (max-width: 1440px) {
-  .crumb .date, .crumb .crumb-sep { display: none; }   /* room for the toolbar; the date is in the page list */
-}
-@media (max-width: 1180px) {
-  .head-tools .wide-only { display: none; }
-  #fmt .narrow-only { display: flex; }
-}
 
 .icon-btn { width: 36px; height: 36px; border: 0; border-radius: 8px; background: transparent; color: var(--muted);
   display: inline-flex; align-items: center; justify-content: center; cursor: pointer; }
@@ -106,6 +118,8 @@ kbd { font: 11px var(--ui); color: var(--faint); }
 .ed { min-height: 100%; outline: 0; padding-top: 8px; padding-bottom: 96px; line-height: var(--line); color: var(--ink); caret-color: var(--ink);
   font-family: var(--hand); white-space: pre-wrap; overflow-wrap: anywhere; word-break: normal; }
 .font-clean .ed { font-family: var(--ui); }
+.font-serif .ed { font-family: "Iowan Old Style", Cambria, Georgia, serif; }
+.font-mono .ed { font-family: var(--mono); }
 .body-ed { font-size: var(--body-size); padding-left: 16px; padding-right: 32px; }
 .margin-ed { font-size: var(--margin-size); padding-left: 12px; padding-right: 10px; color: var(--ink-soft); cursor: text; }
 .ed::selection, .ed *::selection { background: #CFE0F7; }

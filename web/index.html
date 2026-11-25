@@ -33,32 +33,24 @@
           <svg viewBox="0 0 24 24" aria-hidden="true"><path d="m15 14 5-5-5-5"/><path d="M20 9H9.5a5.5 5.5 0 0 0 0 11H13"/></svg>
         </button>
         <span class="tool-gap" aria-hidden="true"></span>
-        <button type="button" class="tool style-pick ed-tool" id="formatBtn" title="Paragraph style" aria-label="Paragraph style: Body" aria-haspopup="dialog" aria-expanded="false">
+        <button type="button" class="tool style-pick ed-tool" id="formatBtn" title="Style and font" aria-label="Style: Body" aria-haspopup="menu" aria-expanded="false">
           <span id="styleName">Body</span>
           <svg class="chev" viewBox="0 0 24 24" aria-hidden="true"><path d="m7 10 5 5 5-5"/></svg>
         </button>
         <span class="tool-gap" aria-hidden="true"></span>
-        <span class="tool-group wide-only" role="group" aria-label="Text style">
-          <button type="button" class="tool ed-tool mark" data-mark="bold" title="Bold (Ctrl+B)" aria-label="Bold" aria-pressed="false"><b>B</b></button>
-          <button type="button" class="tool ed-tool mark" data-mark="italic" title="Italic (Ctrl+I)" aria-label="Italic" aria-pressed="false"><i>I</i></button>
-          <button type="button" class="tool ed-tool mark" data-mark="underline" title="Underline (Ctrl+U)" aria-label="Underline" aria-pressed="false"><u>U</u></button>
-          <button type="button" class="tool ed-tool mark" data-mark="strikeThrough" title="Strikethrough (Ctrl+Shift+X)" aria-label="Strikethrough" aria-pressed="false"><s>S</s></button>
-        </span>
-        <span class="tool-gap wide-only" aria-hidden="true"></span>
-        <span class="tool-group wide-only" role="group" aria-label="Lists">
-          <button type="button" class="tool ed-tool" data-list="bullet" title="Bulleted list (Ctrl+Shift+7)" aria-label="Bulleted list" aria-pressed="false">
-            <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="5" cy="7" r="1.3" class="fill"/><circle cx="5" cy="12" r="1.3" class="fill"/><circle cx="5" cy="17" r="1.3" class="fill"/><path d="M10 7h10M10 12h10M10 17h10"/></svg>
-          </button>
-          <button type="button" class="tool ed-tool" data-list="number" title="Numbered list (Ctrl+Shift+9)" aria-label="Numbered list" aria-pressed="false">
-            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 5.5 5.5 4.5V9M4 9h3M4 14.2c.4-.8 2.6-.9 2.6.4 0 1-2.6 1.7-2.6 3.4h2.8M10 7h10M10 12h10M10 17h10"/></svg>
-          </button>
-          <button type="button" class="tool ed-tool" id="checkBtn" data-list="check" title="Checklist (Ctrl+Shift+L)" aria-label="Checklist" aria-pressed="false">
-            <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="5.5" cy="7" r="2.5"/><path d="m4.3 7 .9.9 1.6-1.8"/><circle cx="5.5" cy="17" r="2.5"/><path d="M11 7h10M11 17h10"/></svg>
-          </button>
-          <button type="button" class="tool ed-tool" id="tableBtn" title="Table (Ctrl+Alt+T)" aria-label="Insert a table">
-            <svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3.5" y="5" width="17" height="14" rx="1.5"/><path d="M3.5 9.7h17M3.5 14.3h17M12 5v14"/></svg>
-          </button>
-        </span>
+        <button type="button" class="tool ed-tool mark" data-mark="bold" title="Bold (Ctrl+B)" aria-label="Bold" aria-pressed="false"><b>B</b></button>
+        <button type="button" class="tool ed-tool mark" data-mark="italic" title="Italic (Ctrl+I)" aria-label="Italic" aria-pressed="false"><i>I</i></button>
+        <button type="button" class="tool ed-tool" id="moreMarksBtn" title="More text styles: underline, strikethrough, superscript, subscript" aria-label="More text styles" aria-haspopup="menu" aria-expanded="false" aria-pressed="false">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="5" cy="12" r="1.5" class="fill"/><circle cx="12" cy="12" r="1.5" class="fill"/><circle cx="19" cy="12" r="1.5" class="fill"/></svg>
+        </button>
+        <span class="tool-gap" aria-hidden="true"></span>
+        <button type="button" class="tool ed-tool list-pick" id="listBtn" title="Lists" aria-label="Lists" aria-haspopup="menu" aria-expanded="false" aria-pressed="false">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="5" cy="7" r="1.3" class="fill"/><circle cx="5" cy="12" r="1.3" class="fill"/><circle cx="5" cy="17" r="1.3" class="fill"/><path d="M10 7h10M10 12h10M10 17h10"/></svg>
+          <svg class="chev" viewBox="0 0 24 24" aria-hidden="true"><path d="m7 10 5 5 5-5"/></svg>
+        </button>
+        <button type="button" class="tool ed-tool" id="tableBtn" title="Table (Ctrl+Alt+T)" aria-label="Insert a table">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3.5" y="5" width="17" height="14" rx="1.5"/><path d="M3.5 9.7h17M3.5 14.3h17M12 5v14"/></svg>
+        </button>
         <span class="tool-sep" aria-hidden="true"></span>
         <button type="button" class="tool ed-tool" id="scribbleBtn" title="Scribble" aria-label="Scribble" aria-pressed="false">
           <svg viewBox="0 0 24 24" aria-hidden="true"><path d="m14.5 4.5 5 5L9 20H4v-5z"/><path d="m12.5 6.5 5 5"/></svg>
@@ -186,46 +178,7 @@
   <div class="side-back" id="sideBack" hidden></div>
 </div>
 
-<div class="pop" id="fmt" role="dialog" aria-label="Text format" hidden>
-  <div class="styles" role="group" aria-label="Paragraph style">
-    <button type="button" data-block="h1" class="st st-h1"><svg class="tick" viewBox="0 0 24 24" aria-hidden="true"><path d="m5 12.5 4.5 4.5L19 7.5"/></svg><span>Title</span><kbd>Ctrl+Shift+T</kbd></button>
-    <button type="button" data-block="h2" class="st st-h2"><svg class="tick" viewBox="0 0 24 24" aria-hidden="true"><path d="m5 12.5 4.5 4.5L19 7.5"/></svg><span>Heading</span><kbd>Ctrl+Shift+H</kbd></button>
-    <button type="button" data-block="h3" class="st st-h3"><svg class="tick" viewBox="0 0 24 24" aria-hidden="true"><path d="m5 12.5 4.5 4.5L19 7.5"/></svg><span>Subheading</span><kbd>Ctrl+Shift+J</kbd></button>
-    <button type="button" data-block="div" class="st st-body"><svg class="tick" viewBox="0 0 24 24" aria-hidden="true"><path d="m5 12.5 4.5 4.5L19 7.5"/></svg><span>Body</span><kbd>Ctrl+Shift+B</kbd></button>
-    <button type="button" data-block="pre" class="st st-pre"><svg class="tick" viewBox="0 0 24 24" aria-hidden="true"><path d="m5 12.5 4.5 4.5L19 7.5"/></svg><span>Monostyled</span><kbd>Ctrl+Shift+M</kbd></button>
-  </div>
-  <div class="segrow narrow-only" role="group" aria-label="Text style">
-    <button type="button" data-mark="bold" title="Bold (Ctrl+B)" aria-label="Bold" aria-pressed="false"><b>B</b></button>
-    <button type="button" data-mark="italic" title="Italic (Ctrl+I)" aria-label="Italic" aria-pressed="false"><i>I</i></button>
-    <button type="button" data-mark="underline" title="Underline (Ctrl+U)" aria-label="Underline" aria-pressed="false"><u>U</u></button>
-    <button type="button" data-mark="strikeThrough" title="Strikethrough (Ctrl+Shift+X)" aria-label="Strikethrough" aria-pressed="false"><s>S</s></button>
-  </div>
-  <div class="segrow narrow-only" role="group" aria-label="Lists">
-    <button type="button" data-list="bullet" title="Bulleted list (Ctrl+Shift+7)" aria-label="Bulleted list" aria-pressed="false">
-      <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="5" cy="7" r="1.3" class="fill"/><circle cx="5" cy="12" r="1.3" class="fill"/><circle cx="5" cy="17" r="1.3" class="fill"/><path d="M10 7h10M10 12h10M10 17h10"/></svg>
-    </button>
-    <button type="button" data-list="number" title="Numbered list (Ctrl+Shift+9)" aria-label="Numbered list" aria-pressed="false">
-      <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 5.5 5.5 4.5V9M4 9h3M4 14.2c.4-.8 2.6-.9 2.6.4 0 1-2.6 1.7-2.6 3.4h2.8M10 7h10M10 12h10M10 17h10"/></svg>
-    </button>
-    <button type="button" data-list="check" title="Checklist (Ctrl+Shift+L)" aria-label="Checklist" aria-pressed="false">
-      <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="5.5" cy="7" r="2.5"/><path d="m4.3 7 .9.9 1.6-1.8"/><circle cx="5.5" cy="17" r="2.5"/><path d="M11 7h10M11 17h10"/></svg>
-    </button>
-    <button type="button" data-table="1" title="Table (Ctrl+Alt+T)" aria-label="Insert a table">
-      <svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3.5" y="5" width="17" height="14" rx="1.5"/><path d="M3.5 9.7h17M3.5 14.3h17M12 5v14"/></svg>
-    </button>
-  </div>
-  <div class="segrow" role="group" aria-label="More list options">
-    <button type="button" data-list="dashed" title="Dashed list (Ctrl+Shift+8)" aria-label="Dashed list" aria-pressed="false">
-      <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3.5 7h3M3.5 12h3M3.5 17h3M10 7h10M10 12h10M10 17h10"/></svg>
-    </button>
-    <button type="button" data-indent="outdent" title="Decrease indent (Ctrl+[)" aria-label="Decrease indent">
-      <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M11 6h9M11 12h9M11 18h9M7 9l-3 3 3 3"/></svg>
-    </button>
-    <button type="button" data-indent="indent" title="Increase indent (Ctrl+])" aria-label="Increase indent">
-      <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M11 6h9M11 12h9M11 18h9M4 9l3 3-3 3"/></svg>
-    </button>
-  </div>
-</div>
+<div class="pop" id="fmt" hidden></div>
 <div class="menu" id="menu" role="menu" hidden></div>
 <div class="modal-back" id="modal" hidden>
   <div class="modal" role="alertdialog" aria-modal="true" aria-labelledby="modalTitle" aria-describedby="modalText">

@@ -60,7 +60,7 @@
   // ---------- keeping pasted and loaded text safe and tidy ----------
   // Only these tags survive; everything else is unwrapped (its text kept) or dropped.
   const KEEP = { DIV: 'div', P: 'div', BR: 'br', H1: 'h1', H2: 'h2', H3: 'h3', H4: 'h3', H5: 'h3', H6: 'h3', PRE: 'pre',
-    B: 'b', STRONG: 'b', I: 'i', EM: 'i', U: 'u', S: 's', STRIKE: 's', DEL: 's', UL: 'ul', OL: 'ol', LI: 'li',
+    B: 'b', STRONG: 'b', I: 'i', EM: 'i', U: 'u', S: 's', STRIKE: 's', DEL: 's', SUP: 'sup', SUB: 'sub', UL: 'ul', OL: 'ol', LI: 'li',
     BLOCKQUOTE: 'div', SECTION: 'div', ARTICLE: 'div', HEADER: 'div', FOOTER: 'div', ASIDE: 'div', MAIN: 'div', NAV: 'div',
     FIGURE: 'div', ADDRESS: 'div', DL: 'div', DT: 'div', DD: 'div', CENTER: 'div',
     TABLE: 'table', TBODY: 'tbody', THEAD: 'tbody', TFOOT: 'tbody', TR: 'tr', TD: 'td', TH: 'td' };
@@ -654,17 +654,18 @@
         menu.appendChild(row); continue;
       }
       if (it.note) { const p = document.createElement('div'); p.className = 'note'; p.textContent = it.note; menu.appendChild(p); continue; }
-      const b = document.createElement('button'); b.type = 'button'; b.className = 'item' + (it.danger ? ' danger-item' : '');
+      const b = document.createElement('button'); b.type = 'button'; b.className = 'item' + (it.danger ? ' danger-item' : '') + (it.cls ? ' ' + it.cls : '');
       b.setAttribute('role', it.checked == null ? 'menuitem' : 'menuitemcheckbox');
       if (it.checked != null) b.setAttribute('aria-checked', String(!!it.checked));
       if (it.disabled) b.disabled = true;
       const label = document.createElement('span'); label.className = 'label'; label.textContent = it.label; b.appendChild(label);
       if (it.keys) { const k = document.createElement('kbd'); k.textContent = it.keys; b.appendChild(k); b.setAttribute('aria-keyshortcuts', it.aria || it.keys); }
-      if (it.checked) b.insertAdjacentHTML('beforeend', ICON.check);
+      if (it.checked != null) { b.insertAdjacentHTML('afterbegin', ICON.check); b.firstChild.style.visibility = it.checked ? 'visible' : 'hidden'; b.classList.add('has-tick'); }
       b.addEventListener('click', () => { const back = it.keepFocus; closeMenu(!back); it.run(); });
       menu.appendChild(b);
     }
     menu.hidden = false;
+    if (menuOpener && menuOpener.hasAttribute && menuOpener.hasAttribute('aria-haspopup')) menuOpener.setAttribute('aria-expanded', 'true');
     const r = menu.getBoundingClientRect();
     menu.style.left = Math.max(8, Math.min(x, innerWidth - r.width - 8)) + 'px';
     menu.style.top = Math.max(8, Math.min(y, innerHeight - r.height - 8)) + 'px';
@@ -673,6 +674,7 @@
   function closeMenu(returnFocus) {
     if (menu.hidden) return;
     menu.hidden = true;
+    if (menuOpener && menuOpener.hasAttribute && menuOpener.hasAttribute('aria-haspopup')) menuOpener.setAttribute('aria-expanded', 'false');
     if (returnFocus && menuOpener && document.contains(menuOpener) && menuOpener.focus) menuOpener.focus();
     menuOpener = null;
   }
@@ -751,8 +753,7 @@
 
   function moreMenu() {
     const r = $('moreBtn').getBoundingClientRect();
-    const hand = !document.body.classList.contains('font-clean');
-    const items = [{ label: 'Handwriting font', checked: hand, run: () => { applyFont(hand ? 'clean' : 'hand'); api.set_pref('font', hand ? 'clean' : 'hand'); } }, '-'];
+    const items = [];
     if (prefs.trayAvailable) {
       items.push({ label: 'Keep running when closed', checked: !!prefs.keepRunning, run: async () => {
         const want = !prefs.keepRunning;
@@ -782,9 +783,12 @@
     items.push({ note: 'NiSH Notes ' + version });
     openMenu(r.right - 240, r.bottom + 6, items, $('moreBtn'));
   }
+  // The font of the page: the sizes of the styles stay as they are, only the typeface changes.
+  const FONTS = [['hand', 'Handwriting'], ['clean', 'Clean'], ['serif', 'Book'], ['mono', 'Typewriter']];
+  let currentFont = 'hand';
   function applyFont(font) {
-    document.body.classList.toggle('font-clean', font === 'clean');
-    document.body.classList.toggle('font-hand', font !== 'clean');
+    currentFont = FONTS.some(([k]) => k === font) ? font : 'hand';
+    for (const [k] of FONTS) document.body.classList.toggle('font-' + k, k === currentFont);
     queueChips();
   }
 
@@ -1196,9 +1200,11 @@
       else if (k === 'u') { e.preventDefault(); exec('underline'); }
       else if (e.code === 'BracketRight') { e.preventDefault(); indent(true); }
       else if (e.code === 'BracketLeft') { e.preventDefault(); indent(false); }
+      else if (e.key === '.') { e.preventDefault(); exec('superscript'); }
+      else if (e.key === ',') { e.preventDefault(); exec('subscript'); }
       return;
     }
-    const blocks = { t: 'h1', h: 'h2', j: 'h3', b: 'div', m: 'pre' };
+    const blocks = { t: 'h2', h: 'h2', j: 'h3', b: 'div', m: 'pre' };      // Title, Subtitle, Body (and the older Monostyled)
     if (blocks[k]) { e.preventDefault(); setBlock(blocks[k]); }
     else if (k === 'x') { e.preventDefault(); exec('strikeThrough'); }
     else if (k === 'l') { e.preventDefault(); setList('check'); }
@@ -1249,19 +1255,73 @@
     else if (e.key === 'Escape') { e.preventDefault(); e.stopPropagation(); closeFormat(true); return; }
     if (j !== null) { e.preventDefault(); items[j].focus(); }
   });
-  const STYLE_NAMES = { h1: 'Title', h2: 'Heading', h3: 'Subheading', div: 'Body', pre: 'Monostyled' };
-  function syncFormat() {                     // the toolbar and the style panel show where the cursor is
+  const STYLE_NAMES = { h1: 'Page name', h2: 'Title', h3: 'Subtitle', div: 'Body', pre: 'Monostyled' };
+  const MARKS = { bold: 'B,STRONG', italic: 'I,EM', underline: 'U', strikeThrough: 'S,STRIKE,DEL', superscript: 'SUP', subscript: 'SUB' };
+  const markOn = (m) => MARKS[m].split(',').some((t) => blockAt(t));   // headings are bold by nature: only real marks count
+  function syncFormat() {                     // the toolbar shows where the cursor is
     if (!activeId || ink.on) return;
     const block = currentBlock(), list = currentList();
-    fmt.querySelectorAll('[data-block]').forEach((b) => b.setAttribute('aria-current', String(b.dataset.block === block && !list)));
-    const name = list ? 'List' : (STYLE_NAMES[block] || 'Body');
-    if ($('styleName').textContent !== name) { $('styleName').textContent = name; $('formatBtn').setAttribute('aria-label', 'Paragraph style: ' + name); }
-    const marks = { bold: 'B,STRONG', italic: 'I,EM', underline: 'U', strikeThrough: 'S,STRIKE,DEL' };   // headings are bold by nature: only real marks count
-    document.querySelectorAll('#fmt [data-mark], .head-tools [data-mark]').forEach((b) => b.setAttribute('aria-pressed', String(!!marks[b.dataset.mark].split(',').some((t) => blockAt(t)))));
-    document.querySelectorAll('#fmt [data-list], .head-tools [data-list]').forEach((b) => b.setAttribute('aria-pressed', String(!!list && list.kind === b.dataset.list)));
-    fmt.querySelectorAll('[data-indent]').forEach((b) => { b.disabled = !list; });
-    const noTable = activeEd() === margin || !!blockAt('TABLE');
-    document.querySelectorAll('#tableBtn, #fmt [data-table]').forEach((b) => { b.disabled = noTable; });
+    const name = list ? 'Body' : (STYLE_NAMES[block] || 'Body');
+    if ($('styleName').textContent !== name) { $('styleName').textContent = name; $('formatBtn').setAttribute('aria-label', 'Style: ' + name); }
+    document.querySelectorAll('.head-tools [data-mark]').forEach((b) => b.setAttribute('aria-pressed', String(markOn(b.dataset.mark))));
+    $('moreMarksBtn').setAttribute('aria-pressed', String(['underline', 'strikeThrough', 'superscript', 'subscript'].some(markOn)));
+    $('listBtn').setAttribute('aria-pressed', String(!!list));
+    $('tableBtn').disabled = activeEd() === margin || !!blockAt('TABLE');
+  }
+  // The three popover menus: style and font, more text styles, lists. The text selection is kept
+  // while a menu is open and put back before its command runs.
+  let menuSel = null;
+  function keepSel() { const ed = activeEd(), s = getSelection(); menuSel = ed && s.rangeCount ? { ed, range: s.getRangeAt(0).cloneRange() } : null; }
+  function backToText(fn) {
+    return () => {
+      if (menuSel && document.contains(menuSel.ed)) {
+        menuSel.ed.focus({ preventScroll: true });
+        const s = getSelection(); s.removeAllRanges(); s.addRange(menuSel.range);
+      }
+      fn(); syncFormat();
+    };
+  }
+  function menuUnder(btn, items) {
+    if (!activeId || ink.on) return;
+    if (!menu.hidden && menuOpener === btn) { closeMenu(true); return; }
+    keepSel(); closeFormat();
+    const r = btn.getBoundingClientRect();
+    openMenu(r.left, r.bottom + 6, items, btn);
+  }
+  function styleMenu() {
+    const block = currentBlock(), list = currentList();
+    const st = (tag, label, keys, cls) => ({ label, keys, aria: keys.replace(/\+/g, '+'), checked: !list && (block === tag || (tag === 'h2' && block === 'h1')), cls, run: backToText(() => setBlock(tag)) });
+    openStyle([
+      st('h2', 'Title', 'Ctrl+Shift+T', 'st-title'),
+      st('h3', 'Subtitle', 'Ctrl+Shift+J', 'st-sub'),
+      st('div', 'Body', 'Ctrl+Shift+B', 'st-bodytext'),
+      '-',
+      { note: 'Font (the sizes stay the same)' },
+      ...FONTS.map(([k, label]) => ({ label, checked: currentFont === k, cls: 'font-item font-item-' + k,
+        run: backToText(() => { applyFont(k); api.set_pref('font', k); }) })),
+    ]);
+  }
+  const openStyle = (items) => menuUnder($('formatBtn'), items);
+  function marksMenu() {
+    const m = (cmd, label, keys, cls) => ({ label, keys, aria: keys && keys.replace(/\+/g, '+'), checked: markOn(cmd), cls, run: backToText(() => exec(cmd)) });
+    menuUnder($('moreMarksBtn'), [
+      m('underline', 'Underline', 'Ctrl+U', 'mk-u'),
+      m('strikeThrough', 'Strikethrough', 'Ctrl+Shift+X', 'mk-s'),
+      m('superscript', 'Superscript', 'Ctrl+.', 'mk-sup'),
+      m('subscript', 'Subscript', 'Ctrl+,', 'mk-sub'),
+    ]);
+  }
+  function listMenu() {
+    const cur = currentList();
+    const l = (kind, label, keys, cls) => ({ label, keys, aria: keys.replace(/\+/g, '+'), checked: !!cur && cur.kind === kind, cls, run: backToText(() => setList(kind)) });
+    menuUnder($('listBtn'), [
+      l('bullet', 'Bulleted list', 'Ctrl+Shift+7', 'ls-bullet'),
+      l('number', 'Numbered list', 'Ctrl+Shift+9', 'ls-number'),
+      l('check', 'Checklist', 'Ctrl+Shift+L', 'ls-check'),
+      '-',
+      { label: 'Indent more', keys: 'Ctrl+]', disabled: !cur, cls: 'pad-tick', run: backToText(() => indent(true)) },
+      { label: 'Indent less', keys: 'Ctrl+[', disabled: !cur, cls: 'pad-tick', run: backToText(() => indent(false)) },
+    ]);
   }
   fmt.addEventListener('mousedown', (e) => e.preventDefault());          // keep the text selection
   fmt.addEventListener('click', (e) => {
@@ -1281,16 +1341,16 @@
   });
   // the toolbar's text buttons: bold, italic, underline, strikethrough, lists, table
   const headTools = document.querySelector('.head-tools');
-  headTools.addEventListener('mousedown', (e) => { if (e.target.closest('[data-mark], [data-list], #tableBtn')) e.preventDefault(); });   // keep the selection
+  headTools.addEventListener('mousedown', (e) => { if (e.target.closest('[data-mark], #tableBtn')) e.preventDefault(); });   // keep the selection
   headTools.addEventListener('click', (e) => {
-    const b = e.target.closest('[data-mark], [data-list], #tableBtn'); if (!b || b.disabled) return;
-    if (b.id === 'tableBtn') insertTable();
-    else if (b.dataset.mark) exec(b.dataset.mark);
-    else setList(b.dataset.list);
+    const b = e.target.closest('[data-mark], #tableBtn'); if (!b || b.disabled) return;
+    if (b.id === 'tableBtn') insertTable(); else exec(b.dataset.mark);
     syncFormat();
   });
-  $('formatBtn').addEventListener('mousedown', (e) => e.preventDefault());
-  $('formatBtn').addEventListener('click', (e) => { if (fmt.hidden) openFormat(e.detail === 0); else closeFormat(); });
+  for (const [id, fn] of [['formatBtn', styleMenu], ['moreMarksBtn', marksMenu], ['listBtn', listMenu]]) {
+    $(id).addEventListener('mousedown', (e) => e.preventDefault());   // keep the selection
+    $(id).addEventListener('click', fn);
+  }
 
   // ---------- one undo history per page: text, margin notes and drawing together ----------
   // Each step is a snapshot of the page. Typing is grouped into one step per pause; a command,
@@ -1990,19 +2050,25 @@
       selectText(editor, 'Hello'); exec('bold');
       selectText(editor, 'Second line'); setBlock('h2');
       check('bold and heading', editor.querySelector('b') && editor.querySelector('h2'));
-      $('formatBtn').click(); await sleep(50);
-      check('Aa popover shows the current style', !fmt.hidden && fmt.querySelector('[data-block="h2"]').getAttribute('aria-current') === 'true');
-      closeFormat();
-      selectText(editor, 'Second line'); openFormat(true); await sleep(30);
-      const kbOpen = fmt.contains(document.activeElement) && document.activeElement.dataset.block === 'h2';
-      key(document.activeElement, 'ArrowDown'); const moved = document.activeElement.dataset.block === 'h3';
+      selectText(editor, 'Second line'); $('formatBtn').click(); await sleep(30);
+      const titleItem = Array.from(menu.querySelectorAll('.item')).find((x) => x.textContent.startsWith('Title'));
+      check('the style menu shows Title, Subtitle, Body and the fonts', !menu.hidden && titleItem && titleItem.getAttribute('aria-checked') === 'true' &&
+        /Subtitle/.test(menu.textContent) && /Body/.test(menu.textContent) && /Handwriting/.test(menu.textContent) && $('styleName').textContent === 'Title');
+      key(menu, 'ArrowDown'); const onSub = document.activeElement.textContent.startsWith('Subtitle');
       document.activeElement.click(); await sleep(30);
-      const applied = !!editor.querySelector('h3') && fmt.contains(document.activeElement);
-      key(document.activeElement, 'Escape');
-      check('Aa panel works from the keyboard', kbOpen && moved && applied && fmt.hidden && document.activeElement === editor);
+      check('the style menu works from the keyboard', onSub && !!editor.querySelector('h3') && menu.hidden && document.activeElement === editor && $('styleName').textContent === 'Subtitle');
+      $('formatBtn').click(); await sleep(30);
+      Array.from(menu.querySelectorAll('.item')).find((x) => x.textContent.startsWith('Book')).click(); await sleep(30);
+      check('changing the font keeps the styles', document.body.classList.contains('font-serif') && !!editor.querySelector('h3'));
+      applyFont('hand');
+      selectText(editor, 'Second'); $('moreMarksBtn').click(); await sleep(30);
+      Array.from(menu.querySelectorAll('.item')).find((x) => x.textContent.startsWith('Superscript')).click(); await sleep(30);
+      check('more text styles: superscript', !!editor.querySelector('h3 sup') && $('moreMarksBtn').getAttribute('aria-pressed') === 'true');
+      selectText(editor, 'Second'); exec('superscript');
       selectText(editor, 'Second line'); setBlock('h2');
       editor.insertAdjacentHTML('beforeend', '<div>Buy milk</div>');
-      selectText(editor, 'Buy milk'); $('checkBtn').click();
+      selectText(editor, 'Buy milk'); $('listBtn').click(); await sleep(30);
+      Array.from(menu.querySelectorAll('.item')).find((x) => x.textContent.startsWith('Checklist')).click(); await sleep(30);
       const li = editor.querySelector('ul.checklist > li');
       check('checklist', li && li.textContent === 'Buy milk');
       const lr = li.getBoundingClientRect();
