@@ -12,6 +12,9 @@ import time
 STARTED = time.monotonic()
 from pathlib import Path
 
+import unblock
+unblock.app_files()          # before pywebview: see unblock.py
+
 import webview
 
 import frame
@@ -417,6 +420,14 @@ def main():
         webview.start(func, args, gui="edgechromium" if os.name == "nt" else None,
                       private_mode=True, storage_path=str(storage))
     except Exception as e:
+        if "Python.Runtime" in str(e):
+            message_box(
+                "NiSH Notes could not start because Windows has blocked its files "
+                "(they came from the internet in a zip).\n\n"
+                "Fix: delete the NiSH Notes folder, right-click the downloaded zip → Properties → "
+                "tick Unblock → OK, then Extract All again.\n\n"
+                f"Details: {e}")
+            sys.exit(1)
         message_box(
             "NiSH Notes needs Microsoft Edge WebView2, which is part of Windows 10 and 11.\n\n"
             "If it is missing, install the \"Evergreen Bootstrapper\" from\n"

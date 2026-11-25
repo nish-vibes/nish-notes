@@ -61,6 +61,23 @@ jobs:
       - name: Build exe
         run: pyinstaller NiSHNotes.spec --noconfirm
 
+      - name: Mark the files as downloaded, like unzipping in Explorer does
+        shell: pwsh
+        run: |
+          Get-ChildItem "dist\NiSH Notes" -Recurse -File | ForEach-Object {
+            Set-Content -LiteralPath $_.FullName -Stream Zone.Identifier -Value "[ZoneTransfer]`r`nZoneId=3"
+          }
+          # Without the fix the app can't start from such files (shown, not required):
+          $env:NN_NO_UNBLOCK = "1"
+          $out = Join-Path $PWD "blocked-check"
+          $p = Start-Process -FilePath "dist\NiSH Notes\NiSHNotes.exe" -ArgumentList "--smoketest", "`"$out`"" -PassThru
+          if (-not $p.WaitForExit(60000)) { $p.Kill(); Write-Output "without unblocking: still running after 60 s (a message box?)" }
+          else { Write-Output "without unblocking: exit code $($p.ExitCode)" }
+          Get-Process NiSHNotes -ErrorAction SilentlyContinue | Stop-Process -Force
+          Remove-Item Env:NN_NO_UNBLOCK
+          $marked = (Get-Item "dist\NiSH Notes\_internal\pythonnet\runtime\Python.Runtime.dll" -Stream * | Where-Object Stream -eq "Zone.Identifier").Count
+          Write-Output "Python.Runtime.dll marked: $marked"
+
       - name: GUI smoke test (opens the window and clicks through everything)
         shell: pwsh
         run: |

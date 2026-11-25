@@ -5,7 +5,7 @@
 from PyInstaller.utils.hooks import collect_all
 
 datas = [("web", "web"), ("VERSION", "."), ("assets/icon.ico", "assets")]
-binaries, hiddenimports = [], ["store", "settings", "instance", "tray", "frame", "pystray._win32", "PIL.Image"]
+binaries, hiddenimports = [], ["store", "settings", "instance", "tray", "frame", "unblock", "pystray._win32", "PIL.Image"]
 # pywebview and the .NET bridge it uses to host Edge WebView2
 for pkg in ("webview", "clr_loader", "pythonnet", "clr", "proxy_tools", "bottle", "pystray"):
     try:

@@ -12,6 +12,9 @@ right-click it → **Extract All**, and put the `NiSH Notes` folder anywhere (Do
 Start `NiSHNotes.exe` inside it; pin it to the taskbar if you like. Windows may show "Windows protected
 your PC" the first time because the app isn't signed: click **More info → Run anyway**.
 
+If it says it can't start ("Failed to resolve Python.Runtime…"), Windows has blocked the unzipped files.
+1.5.1 and later unblock themselves; for 1.5.0, right-click the zip → **Properties** → tick **Unblock** → OK, and extract it again.
+
 Since 1.5 the app comes as a folder instead of a single file: a single file had to unpack about
 100 MB to a temp folder every time it started, so the folder starts several times faster. Your notes
 and settings stay where they were; delete the old `NiSHNotes.exe` once the new one runs.
