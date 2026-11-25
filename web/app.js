@@ -1846,10 +1846,8 @@
   window.addEventListener('pagehide', () => { flushTitle(); flush(); });
 
   // ---------- the window: no Windows title bar, buttons in an island at the top right ----------
-  // (the same island as NiSH PDF Viewer: it shows when the pointer is over the desk above the page)
   function showDots(on) {
     document.body.classList.toggle('has-dots', !!on); $('titlebar').hidden = !on;
-    if (!on) $('titlebar').classList.remove('visible');
   }
   function showFilled(on) {
     const b = $('winZoom'), label = on ? 'Back to window size' : 'Fill the screen';
@@ -1879,16 +1877,6 @@
   });
   $('winMin').addEventListener('click', () => { if (api.mock) toast('In the app, this minimizes the window.'); else api.window_minimize(); });
   $('winZoom').addEventListener('click', zoom);
-  const island = $('titlebar');
-  const STRIP = 48;                          // the desk above the page, where the window buttons live
-  document.addEventListener('pointermove', (e) => {
-    if (island.hidden) return;
-    const r = island.getBoundingClientRect();
-    const hot = (e.clientY <= STRIP && e.clientX >= innerWidth - 240) ||
-      (e.clientX >= r.left - 8 && e.clientX <= r.right + 8 && e.clientY <= r.bottom + 8);
-    island.classList.toggle('visible', hot);
-  });
-  document.documentElement.addEventListener('pointerleave', () => island.classList.remove('visible'));
   let deskDown = 0;
   document.addEventListener('pointerdown', (e) => {          // the desk around the page moves the window
     if (e.button !== 0 || !document.body.classList.contains('has-dots')) return;
