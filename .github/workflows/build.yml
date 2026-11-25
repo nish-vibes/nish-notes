@@ -65,9 +65,10 @@ jobs:
         shell: pwsh
         timeout-minutes: 3
         run: |
-          # the exe and the .NET parts that refuse to load when marked (marking every file is slow)
+          # the .NET parts that refuse to load when marked. Not the exe: a marked exe makes Windows ask
+          # "run this unknown app?" first (you click Run once on your own computer), which no one can click here.
           $app = "dist\NiSH Notes"
-          $files = @(Get-Item "$app\NiSHNotes.exe") + @(Get-ChildItem "$app\_internal" -Recurse -File -Include *.dll | Where-Object { $_.FullName -match 'pythonnet|clr_loader|webview' })
+          $files = @(Get-ChildItem "$app\_internal" -Recurse -File -Include *.dll | Where-Object { $_.FullName -match 'pythonnet|clr_loader|webview' })
           foreach ($f in $files) { Set-Content -LiteralPath $f.FullName -Stream Zone.Identifier -Value "[ZoneTransfer]`r`nZoneId=3" }
           Write-Output "marked $($files.Count) files"
 
