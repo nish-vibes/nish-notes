@@ -393,11 +393,10 @@ body.dragging-now, body.dragging-now * { cursor: grabbing !important; }
 .toast[hidden] { display: none; }
 
 /* ---------- the window's own buttons (the Windows title bar is hidden) ---------- */
-/* The window buttons: always shown on the desk at the top right, on a small paper card like the
+/* The window buttons: an island always shown in full on the desk at the top right, on a small paper card like the
    folder panel, with the same quiet buttons as the page's tools. */
 .win-island { position: fixed; top: 6px; right: 20px; z-index: 35; display: flex; gap: 2px; padding: 3px;
-  background: var(--grain), var(--side); border-radius: 10px; box-shadow: 0 8px 20px rgba(0,0,0,.28); opacity: .3; transition: opacity .2s; }
-.win-island.near, .win-island:focus-within { opacity: 1; }
+  background: var(--grain), var(--side); border-radius: 10px; box-shadow: 0 8px 20px rgba(0,0,0,.28); }   /* always fully shown */
 .win-island[hidden] { display: none; }
 .wbtn { width: 32px; height: 30px; padding: 0; display: inline-flex; align-items: center; justify-content: center; border: 0; border-radius: 7px;
   background: transparent; color: var(--text); cursor: pointer; opacity: .55; transition: opacity .15s, background-color .15s, color .15s; }

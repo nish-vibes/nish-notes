@@ -1968,7 +1968,7 @@
 
   // ---------- tools: almost hidden, they light up when the pointer comes near ----------
   const NEAR = 72;                                   // px around a group of tools
-  const toolZones = () => [document.querySelector('.head-tools'), document.querySelector('.side-tools'), $('titlebar')];
+  const toolZones = () => [document.querySelector('.head-tools'), document.querySelector('.side-tools')];   // the window buttons are always shown
   function lightTools(x, y) {
     for (const z of toolZones()) {
       if (!z || z.hidden) continue;

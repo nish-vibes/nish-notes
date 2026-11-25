@@ -32,8 +32,8 @@ and settings stay where they were; delete the old `NiSHNotes.exe` once the new o
   - **B** and *I*, and **⋯** for underline, strikethrough, superscript (Ctrl+.) and subscript (Ctrl+,).
   - **Lists**: bulleted, numbered and checklist, plus indenting. Click a checklist circle to tick it off.
   - **Table.**
-- **Quiet tools.** All tools are faint until the pointer comes near them (or you Tab to them),
-  then they light up, so the page stays calm while you write.
+- **Quiet tools.** The page and folder tools are faint until the pointer comes near them (or you Tab
+  to them), then they light up, so the page stays calm while you write. The window buttons are always shown.
 - **Undo and Redo** (the arrows at the top, or Ctrl+Z / Ctrl+Y) go back through everything on the
   page in order: typing, formatting, tables and drawing. The page title has its own Ctrl+Z.
 - **Tables.** The table button (or Ctrl+Alt+T). Tab moves to the next cell and adds a row at the end.
