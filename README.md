@@ -58,10 +58,10 @@ and settings stay where they were; delete the old `NiSHNotes.exe` once the new o
   read it first without putting it back. Pages stay there for 30 days.
 - **Hide the folders** with the button at the top right of the page (or Ctrl+\\) to give the page the whole window.
   On a narrow window, or zoomed in, they hide by themselves.
-- **Window buttons like on a Mac.** The Windows title bar is hidden; the red, yellow and green dots at the
-  top left close, minimize and fill the screen. Drag the dark desk around the page to move the window,
-  double-click it to fill the screen. The edges still resize the window and Windows' snapping works.
-  Want the Windows title bar back? **⋯ → Window buttons at the top left**.
+- **No Windows title bar.** Point at the dark desk at the top right and the window buttons appear
+  (minimize, fill the screen, close), as in NiSH PDF Viewer. Drag the desk around the page to move the
+  window, double-click it to fill the screen. The edges still resize the window and Windows' snapping works.
+  Want the Windows title bar back? **⋯ → Hide the Windows title bar**.
 - The window remembers its size, and whether it filled the screen, also after hiding in the tray.
 - **Ctrl+W** or **Ctrl+Q** closes the window but keeps NiSH Notes running in the tray, so it opens
   instantly next time. To quit completely, right-click the tray icon → **Quit NiSH Notes**.

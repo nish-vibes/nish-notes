@@ -7,15 +7,17 @@
 <link rel="stylesheet" href="style.css">
 </head>
 <body class="font-hand">
-<div class="titlebar" id="titlebar" role="group" aria-label="Window" hidden>
-  <button type="button" class="dot dot-close" id="winClose" aria-label="Close window" title="Close">
-    <svg viewBox="0 0 12 12" aria-hidden="true"><path d="M3.8 3.8l4.4 4.4M8.2 3.8 3.8 8.2"/></svg>
+<!-- Window: no Windows title bar. Drag the desk to move, double-click it to fill the screen. -->
+<div class="win-island" id="titlebar" role="group" aria-label="Window" hidden>
+  <button type="button" class="wbtn" id="winMin" aria-label="Minimize" title="Minimize">
+    <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 12.5h12"/></svg>
   </button>
-  <button type="button" class="dot dot-min" id="winMin" aria-label="Minimize" title="Minimize">
-    <svg viewBox="0 0 12 12" aria-hidden="true"><path d="M3 6h6"/></svg>
+  <button type="button" class="wbtn" id="winZoom" aria-label="Fill the screen" aria-pressed="false" title="Fill the screen">
+    <svg class="icon-enter" viewBox="0 0 24 24" aria-hidden="true"><path d="M4.5 9V4.5H9M15 4.5h4.5V9M19.5 15v4.5H15M9 19.5H4.5V15"/></svg>
+    <svg class="icon-exit" viewBox="0 0 24 24" aria-hidden="true"><path d="M9 4.5V9H4.5M19.5 9H15V4.5M15 19.5V15h4.5M4.5 15H9v4.5"/></svg>
   </button>
-  <button type="button" class="dot dot-zoom" id="winZoom" aria-label="Fill the screen" title="Fill the screen">
-    <svg viewBox="0 0 12 12" aria-hidden="true"><path d="M3.6 7.6V3.6h4zM8.4 4.4v4h-4z" class="fill"/></svg>
+  <button type="button" class="wbtn wbtn-close" id="winClose" aria-label="Close" title="Close">
+    <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6.5 6.5l11 11M17.5 6.5l-11 11"/></svg>
   </button>
 </div>
 <div class="app">

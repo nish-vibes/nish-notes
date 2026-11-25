@@ -125,10 +125,13 @@ class Api:
             settings.put("frame", "windows" if value == "windows" else "dots")
             return self._app.apply_frame()
 
-    # the window, for the three dots at the top left (when the Windows title bar is hidden)
+    # the window, for the buttons at the top right (when the Windows title bar is hidden)
     def window_frame(self):
         """True when the title bar is hidden and the page should draw its own buttons."""
         return self._app.apply_frame() if self._app else False
+
+    def window_maximized(self):
+        return bool(self._app and self._app.maximized)
 
     def window_minimize(self):
         self._window.minimize()
@@ -201,6 +204,14 @@ class App:
             return
         self.maximized = on
         settings.put("maximized", on)
+        js = "window.NN && NN.showFilled && NN.showFilled(%s)" % ("true" if on else "false")
+
+        def tell_page():     # the fill-the-screen button shows the other icon
+            try:
+                self.window.evaluate_js(js)
+            except Exception:
+                pass
+        threading.Thread(target=tell_page, daemon=True).start()
 
     def toggle_maximized(self):
         if self.maximized:
@@ -335,7 +346,7 @@ def smoketest(window, api, outdir):
         app = api._app
         dots = app.apply_frame()
         good = dots and not frame.has_caption(window) and window.evaluate_js("document.body.classList.contains('has-dots')")
-        lines.append(("ok   " if good else "FAIL ") + "Windows title bar hidden, three dots at the top left")
+        lines.append(("ok   " if good else "FAIL ") + "Windows title bar hidden, window buttons at the top right")
         ok = ok and bool(good)
         app.toggle_maximized()
         time.sleep(0.6)

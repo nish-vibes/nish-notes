@@ -764,7 +764,7 @@
     }
     if (!api.mock && api.window_frame) {
       const dots = document.body.classList.contains('has-dots');
-      items.push({ label: 'Window buttons at the top left', checked: dots, run: async () => {
+      items.push({ label: 'Hide the Windows title bar', checked: dots, run: async () => {
         const on = !!(await call('set_pref', 'frame', dots ? 'windows' : 'dots'));
         showDots(on);
         if (!dots && !on) toast('The Windows title bar could not be hidden on this computer.');
@@ -1845,12 +1845,21 @@
   document.addEventListener('visibilitychange', () => { if (document.hidden) { flushTitle(); flush(); } });
   window.addEventListener('pagehide', () => { flushTitle(); flush(); });
 
-  // ---------- the window: three dots instead of the Windows title bar ----------
-  function showDots(on) { document.body.classList.toggle('has-dots', !!on); $('titlebar').hidden = !on; }
+  // ---------- the window: no Windows title bar, buttons in an island at the top right ----------
+  // (the same island as NiSH PDF Viewer: it shows when the pointer is over the desk above the page)
+  function showDots(on) {
+    document.body.classList.toggle('has-dots', !!on); $('titlebar').hidden = !on;
+    if (!on) $('titlebar').classList.remove('visible');
+  }
+  function showFilled(on) {
+    const b = $('winZoom'), label = on ? 'Back to window size' : 'Fill the screen';
+    b.setAttribute('aria-pressed', on ? 'true' : 'false'); b.setAttribute('aria-label', label); b.title = label;
+  }
   async function setupFrame() {
     if (api.mock) { if (/[?&]dots\b/.test(location.search)) showDots(true); return; }   // preview of the window buttons
     if (!api.window_frame) return;
     try { showDots(await api.window_frame()); } catch (e) { showDots(false); }
+    try { showFilled(await api.window_maximized()); } catch (e) { /* the button still works */ }
   }
   async function saveAll() { await flushTitle(); await flush(); }
   async function toBackground() {           // Ctrl+W, Ctrl+Q: the window closes, NiSH Notes keeps running
@@ -1859,22 +1868,37 @@
     if (api.mock) { toast('In the app, Ctrl+W closes the window and NiSH Notes keeps running in the tray.'); return; }
     api.window_hide();
   }
-  const winCall = (name) => { if (api.mock) toast('In the app, this button works on the window.'); else api[name](); };
-  $('winClose').addEventListener('click', async () => { if (rec.mr) await stopMemo(false); await saveAll(); winCall('window_close'); });
-  $('winMin').addEventListener('click', () => winCall('window_minimize'));
-  $('winZoom').addEventListener('click', () => winCall('window_zoom'));
+  async function zoom() {
+    if (api.mock) { showFilled($('winZoom').getAttribute('aria-pressed') !== 'true'); return; }
+    try { showFilled(await api.window_zoom()); } catch (e) { /* nothing to show */ }
+  }
+  $('winClose').addEventListener('click', async () => {
+    if (api.mock) { toast('In the app, this closes the window.'); return; }
+    if (rec.mr) await stopMemo(false);
+    await saveAll(); api.window_close();
+  });
+  $('winMin').addEventListener('click', () => { if (api.mock) toast('In the app, this minimizes the window.'); else api.window_minimize(); });
+  $('winZoom').addEventListener('click', zoom);
+  const island = $('titlebar');
+  const STRIP = 48;                          // the desk above the page, where the window buttons live
+  document.addEventListener('pointermove', (e) => {
+    if (island.hidden) return;
+    const r = island.getBoundingClientRect();
+    const hot = (e.clientY <= STRIP && e.clientX >= innerWidth - 240) ||
+      (e.clientX >= r.left - 8 && e.clientX <= r.right + 8 && e.clientY <= r.bottom + 8);
+    island.classList.toggle('visible', hot);
+  });
+  document.documentElement.addEventListener('pointerleave', () => island.classList.remove('visible'));
   let deskDown = 0;
   document.addEventListener('pointerdown', (e) => {          // the desk around the page moves the window
     if (e.button !== 0 || !document.body.classList.contains('has-dots')) return;
-    if (e.target !== document.querySelector('.app') && e.target !== $('titlebar')) return;
+    if (e.target !== document.querySelector('.app')) return;
     e.preventDefault();
     const t = Date.now();
-    if (t - deskDown < 450) { deskDown = 0; if (!api.mock) api.window_zoom(); return; }   // double-click: fill the screen
+    if (t - deskDown < 450) { deskDown = 0; zoom(); return; }   // double-click: fill the screen
     deskDown = t;
     if (!api.mock) api.window_move();
   });
-  window.addEventListener('blur', () => document.body.classList.add('window-blurred'));
-  window.addEventListener('focus', () => document.body.classList.remove('window-blurred'));
 
   // ---------- start ----------
   function whenApi() {
@@ -2115,6 +2139,6 @@
   }
 
   function setKeepRunning(on) { prefs.keepRunning = !!on; }
-  window.NN = { ready: false, setKeepRunning, selfTest, newPage, newFolder, openPage, movePage, moveFolder, deletePage, sanitize, showDots };
+  window.NN = { ready: false, setKeepRunning, selfTest, newPage, newFolder, openPage, movePage, moveFolder, deletePage, sanitize, showDots, showFilled };
   start().catch((e) => toast('NiSH Notes could not start: ' + errText(e)));
 })();
