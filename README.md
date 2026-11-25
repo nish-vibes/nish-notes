@@ -25,12 +25,16 @@ and settings stay where they were; delete the old `NiSHNotes.exe` once the new o
   of a page is its name, so there is nothing to fill in before you start writing.
   Everything is **saved automatically** while you type. If a save ever fails (a USB stick was
   pulled out, say) a popup tells you, and the app keeps trying.
-- **Formatting like Notes on a Mac.** Click **Aa** for Title, Heading, Subheading, Body and
-  Monostyled, **bold**, *italic*, underline, strikethrough, bulleted, dashed and numbered lists
-  and indenting. The checklist button makes a to-do list; click a circle to tick it off.
+- **A light editing toolbar** at the top of the page: paragraph style (Title, Heading, Subheading,
+  Body, Monostyled; the button shows the style you're in), **bold**, *italic*, underline,
+  strikethrough, bulleted and numbered lists, checklist and table. The style menu also has dashed
+  lists and indenting. In a narrow window the text buttons move into the style menu. Click a
+  checklist circle to tick it off.
+- **Quiet tools.** All tools are faint until the pointer comes near them (or you Tab to them),
+  then they light up, so the page stays calm while you write.
 - **Undo and Redo** (the arrows at the top, or Ctrl+Z / Ctrl+Y) go back through everything on the
   page in order: typing, formatting, tables and drawing. The page title has its own Ctrl+Z.
-- **Tables.** Aa → Table (or Ctrl+Alt+T). Tab moves to the next cell and adds a row at the end.
+- **Tables.** The table button (or Ctrl+Alt+T). Tab moves to the next cell and adds a row at the end.
   A small bar above the table adds and removes rows and columns; right-click a cell for more.
   Rows stay on the ruled lines.
 - **Margin notes.** The narrow column left of the red line is its own little text area, for dates,
@@ -75,7 +79,7 @@ and settings stay where they were; delete the old `NiSHNotes.exe` once the new o
 Everything works without a mouse. **Esc** leaves the page (Tab is kept for indenting and tables),
 **F6** moves between the page, the margin, the folders and the page tools. Menus open with the
 ⋯ button, Shift+F10 or the Menu key, and are used with the arrow keys; **Esc** goes back to where
-you were. The Aa panel opens with the current style selected. Checklist items are read out as
+you were. The style menu opens with the current style selected. Checklist items are read out as
 done or not done, the window title names the open page, and animations stop when Windows'
 "Show animations" setting is off.
 

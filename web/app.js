@@ -380,7 +380,8 @@
   function renderHead() {
     const hit = activeId && findPage(activeId);
     $('empty').hidden = !!hit || !!preview;
-    for (const id of ['formatBtn', 'checkBtn', 'scribbleBtn', 'memoBtn', 'deletePageBtn']) $(id).disabled = !hit;
+    document.querySelectorAll('.ed-tool').forEach((b) => { b.disabled = !hit; });
+    if (hit) syncFormat();
     $('folderDot').style.setProperty('--fc', hit ? hit.folder.color : 'transparent');
     $('crumbSep').hidden = !hit;
     $('folderLabel').textContent = hit ? hit.folder.name : '';
@@ -1107,7 +1108,7 @@
     document.execCommand(cmd, false, val);
     tidy(activeEd()); afterEdit(); histCommit();
   }
-  function afterEdit() { updateEmpty(); changed(); if (!fmt.hidden) syncFormat(); queueChips(); titleChanged(); }
+  function afterEdit() { updateEmpty(); changed(); syncFormat(); queueChips(); titleChanged(); }
   function setBlock(tag) {
     if (!activeId || ink.on) return;
     ensureFocus();
@@ -1248,31 +1249,48 @@
     else if (e.key === 'Escape') { e.preventDefault(); e.stopPropagation(); closeFormat(true); return; }
     if (j !== null) { e.preventDefault(); items[j].focus(); }
   });
-  function syncFormat() {
+  const STYLE_NAMES = { h1: 'Title', h2: 'Heading', h3: 'Subheading', div: 'Body', pre: 'Monostyled' };
+  function syncFormat() {                     // the toolbar and the style panel show where the cursor is
+    if (!activeId || ink.on) return;
     const block = currentBlock(), list = currentList();
     fmt.querySelectorAll('[data-block]').forEach((b) => b.setAttribute('aria-current', String(b.dataset.block === block && !list)));
+    const name = list ? 'List' : (STYLE_NAMES[block] || 'Body');
+    if ($('styleName').textContent !== name) { $('styleName').textContent = name; $('formatBtn').setAttribute('aria-label', 'Paragraph style: ' + name); }
     const marks = { bold: 'B,STRONG', italic: 'I,EM', underline: 'U', strikeThrough: 'S,STRIKE,DEL' };   // headings are bold by nature: only real marks count
-    fmt.querySelectorAll('[data-mark]').forEach((b) => b.setAttribute('aria-pressed', String(!!marks[b.dataset.mark].split(',').some((t) => blockAt(t)))));
-    fmt.querySelectorAll('[data-list]').forEach((b) => b.setAttribute('aria-pressed', String(!!list && list.kind === b.dataset.list)));
+    document.querySelectorAll('#fmt [data-mark], .head-tools [data-mark]').forEach((b) => b.setAttribute('aria-pressed', String(!!marks[b.dataset.mark].split(',').some((t) => blockAt(t)))));
+    document.querySelectorAll('#fmt [data-list], .head-tools [data-list]').forEach((b) => b.setAttribute('aria-pressed', String(!!list && list.kind === b.dataset.list)));
     fmt.querySelectorAll('[data-indent]').forEach((b) => { b.disabled = !list; });
-    $('tableBtn').disabled = activeEd() === margin || !!blockAt('TABLE');
+    const noTable = activeEd() === margin || !!blockAt('TABLE');
+    document.querySelectorAll('#tableBtn, #fmt [data-table]').forEach((b) => { b.disabled = noTable; });
   }
   fmt.addEventListener('mousedown', (e) => e.preventDefault());          // keep the text selection
   fmt.addEventListener('click', (e) => {
     const b = e.target.closest('button'); if (!b) return;
     const kb = e.detail === 0 && fmt.contains(document.activeElement);
-    if (b.id === 'tableBtn') { const k = kb; if (k) ensureFocus(); fmt.hidden = true; $('formatBtn').setAttribute('aria-expanded', 'false'); insertTable(); return; }
+    if (b.dataset.table) { if (kb) ensureFocus(); fmt.hidden = true; $('formatBtn').setAttribute('aria-expanded', 'false'); insertTable(); return; }
     if (b.dataset.block) setBlock(b.dataset.block);
     else if (b.dataset.mark) exec(b.dataset.mark);
     else if (b.dataset.list) setList(b.dataset.list);
     else if (b.dataset.indent) indent(b.dataset.indent === 'indent');
     if (kb && !fmt.hidden) { saveFmtSel(); syncFormat(); b.focus(); }      // keep working from the keyboard
   });
-  document.addEventListener('selectionchange', () => { if (!fmt.hidden) syncFormat(); });
+  let syncQueued = false;
+  document.addEventListener('selectionchange', () => {
+    if (syncQueued) return; syncQueued = true;
+    requestAnimationFrame(() => { syncQueued = false; syncFormat(); });
+  });
+  // the toolbar's text buttons: bold, italic, underline, strikethrough, lists, table
+  const headTools = document.querySelector('.head-tools');
+  headTools.addEventListener('mousedown', (e) => { if (e.target.closest('[data-mark], [data-list], #tableBtn')) e.preventDefault(); });   // keep the selection
+  headTools.addEventListener('click', (e) => {
+    const b = e.target.closest('[data-mark], [data-list], #tableBtn'); if (!b || b.disabled) return;
+    if (b.id === 'tableBtn') insertTable();
+    else if (b.dataset.mark) exec(b.dataset.mark);
+    else setList(b.dataset.list);
+    syncFormat();
+  });
   $('formatBtn').addEventListener('mousedown', (e) => e.preventDefault());
   $('formatBtn').addEventListener('click', (e) => { if (fmt.hidden) openFormat(e.detail === 0); else closeFormat(); });
-  $('checkBtn').addEventListener('mousedown', (e) => e.preventDefault());
-  $('checkBtn').addEventListener('click', () => setList('check'));
 
   // ---------- one undo history per page: text, margin notes and drawing together ----------
   // Each step is a snapshot of the page. Typing is grouped into one step per pause; a command,
@@ -1888,6 +1906,20 @@
     if (!api.mock) api.window_move();
   });
 
+  // ---------- tools: almost hidden, they light up when the pointer comes near ----------
+  const NEAR = 72;                                   // px around a group of tools
+  const toolZones = () => [document.querySelector('.head-tools'), document.querySelector('.side-tools'), $('titlebar')];
+  function lightTools(x, y) {
+    for (const z of toolZones()) {
+      if (!z || z.hidden) continue;
+      const r = z.getBoundingClientRect();
+      const dx = Math.max(r.left - x, 0, x - r.right), dy = Math.max(r.top - y, 0, y - r.bottom);
+      z.classList.toggle('near', dx * dx + dy * dy <= NEAR * NEAR);
+    }
+  }
+  document.addEventListener('pointermove', (e) => lightTools(e.clientX, e.clientY), { passive: true });
+  document.documentElement.addEventListener('pointerleave', () => toolZones().forEach((z) => z && z.classList.remove('near')));
+
   // ---------- start ----------
   function whenApi() {
     return new Promise((resolve) => {
@@ -2019,7 +2051,7 @@
       redo(); redo();
       check('undo and redo walk through typing and drawing together', a1 && a2 && editor.textContent.includes('undo-me') && ink.strokes.length === strokes);
       editor.focus(); caretIn(editor, true);
-      $('formatBtn').click(); await sleep(30); $('tableBtn').click();
+      $('tableBtn').click();
       let t = editor.querySelector('table');
       await sleep(50);
       check('insert a table, with a handle in the margin', t && t.rows.length === 3 && t.rows[0].cells.length === 2 && blockAt('TD') === t.rows[0].cells[0] && $('chips').children.length === 1);

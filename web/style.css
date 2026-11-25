@@ -51,25 +51,42 @@ kbd { font: 11px var(--ui); color: var(--faint); }
 .crumb-dot { width: 10px; height: 10px; flex: none; border-radius: 3px; background: var(--fc, transparent); }
 .crumb .folder-label { min-height: 0; color: #5C564A; overflow: hidden; text-overflow: ellipsis; }
 .head-text { flex: 1 1 160px; min-width: 0; display: flex; flex-direction: column; gap: 2px; }
-.folder-label { font-size: 12px; font-weight: 600; letter-spacing: .06em; text-transform: uppercase; color: #6A6455; min-height: 16px; }
+.folder-label { flex: 0 1 auto; min-width: 3em; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 12px; font-weight: 600; letter-spacing: .06em; text-transform: uppercase; color: #6A6455; min-height: 16px; }
 .title { font-family: var(--hand); font-weight: 700; font-size: 30px; line-height: 40px; color: var(--ink);
   border: 0; outline: 0; background: transparent; padding: 0; width: 100%; min-width: 0; border-radius: 4px; }
 .title:focus-visible { box-shadow: 0 0 0 2px #C9D7EE; }
 .font-clean .title { font-family: var(--ui); font-weight: 600; font-size: 26px; }
 .head-tools { display: flex; align-items: center; gap: 2px; flex: none; }
-.date { font-size: 13px; color: var(--muted); white-space: nowrap; }
+.date { flex: 0 100 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; font-size: 13px; color: var(--muted); white-space: nowrap; }   /* the date gives way first */
 .tool-sep { width: 1px; height: 20px; margin: 0 6px; background: #E2DDD0; }
 
 /* page tools: quiet until you reach for them */
-.tool { width: 38px; height: 38px; border: 0; border-radius: 8px; background: transparent; color: var(--text);
-  display: inline-flex; align-items: center; justify-content: center; cursor: pointer; opacity: .55; transition: opacity .15s, background-color .15s; }
-.tool svg { width: 20px; height: 20px; }
+/* Tools are almost hidden (faint, still visible) and light up when the pointer comes near
+   their group (.near, set by the script) or the keyboard is in it. */
+.tool { width: 34px; height: 36px; border: 0; border-radius: 8px; background: transparent; color: var(--text); flex: none;
+  display: inline-flex; align-items: center; justify-content: center; cursor: pointer; opacity: .2; transition: opacity .2s, background-color .15s, color .15s; }
+.tool svg { width: 19px; height: 19px; }
+.tool svg .fill { fill: currentColor; stroke: none; }
+.near .tool, .head-tools:focus-within .tool { opacity: .62; }
 .tool:hover, .tool:focus-visible { opacity: 1; background: rgba(34,48,74,.08); }
 .tool:active { background: rgba(34,48,74,.14); }
-.tool[aria-pressed="true"], .tool[aria-expanded="true"] { opacity: 1; background: rgba(47,94,158,.14); color: var(--accent); }
-.tool:disabled { opacity: .15; cursor: default; background: transparent; }
-.tool.aa { font: 600 17px/1 var(--ui); letter-spacing: -.02em; }
-.tool-gap { width: 6px; }
+.tool[aria-pressed="true"], .tool[aria-expanded="true"] { opacity: .75; background: rgba(47,94,158,.12); color: var(--accent); }
+.near .tool[aria-pressed="true"], .tool[aria-pressed="true"]:hover { opacity: 1; }
+.tool:disabled, .near .tool:disabled { opacity: .08; cursor: default; background: transparent; }
+.tool.mark { font: 17px/1 Georgia, "Times New Roman", serif; }
+.tool.mark b { font-weight: 700; }
+.style-pick { width: auto; min-width: 98px; padding: 0 6px 0 10px; gap: 4px; justify-content: space-between; font: 600 13px/1 var(--ui); }
+.style-pick .chev { width: 15px; height: 15px; }
+.tool-group { display: inline-flex; gap: 0; }
+.tool-gap { width: 6px; flex: none; }
+#fmt .narrow-only { display: none; }
+@media (min-width: 1181px) and (max-width: 1440px) {
+  .crumb .date, .crumb .crumb-sep { display: none; }   /* room for the toolbar; the date is in the page list */
+}
+@media (max-width: 1180px) {
+  .head-tools .wide-only { display: none; }
+  #fmt .narrow-only { display: flex; }
+}
 
 .icon-btn { width: 36px; height: 36px; border: 0; border-radius: 8px; background: transparent; color: var(--muted);
   display: inline-flex; align-items: center; justify-content: center; cursor: pointer; }
@@ -181,7 +198,7 @@ kbd { font: 11px var(--ui); color: var(--faint); }
 .segrow button[aria-pressed="true"] { background: #fff; color: var(--accent); box-shadow: 0 1px 2px rgba(0,0,0,.14); }
 .segrow button:disabled { opacity: .35; cursor: default; background: transparent; }
 .segrow button:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
-.segrow .dot { fill: currentColor; stroke: none; }
+.segrow .fill { fill: currentColor; stroke: none; }
 
 /* ---------- folder menu ---------- */
 .side { flex: 0 0 300px; min-width: 0; display: flex; flex-direction: column; gap: 12px; background: var(--side); border-radius: 10px;
@@ -189,6 +206,9 @@ kbd { font: 11px var(--ui); color: var(--faint); }
 .side-head { display: flex; align-items: center; justify-content: space-between; }
 .side-head h2 { margin: 0 0 0 4px; font-size: 14px; font-weight: 700; letter-spacing: .05em; text-transform: uppercase; color: var(--side-ink); }
 .side-tools { display: flex; gap: 2px; }
+.side-tools > * { opacity: .3; transition: opacity .2s; }
+.side-tools.near > *, .side-tools:focus-within > * { opacity: .9; }
+.side-tools > *:hover, .side-tools > *:focus-visible, .side-tools > [aria-expanded="true"] { opacity: 1; }
 .side-close { display: none; }
 .side-back { position: fixed; inset: 0; z-index: 19; background: rgba(20,22,28,.35); }
 .side-back[hidden] { display: none !important; }
@@ -362,7 +382,8 @@ body.dragging-now, body.dragging-now * { cursor: grabbing !important; }
 /* The window buttons: always shown on the desk at the top right, on a small paper card like the
    folder panel, with the same quiet buttons as the page's tools. */
 .win-island { position: fixed; top: 6px; right: 20px; z-index: 35; display: flex; gap: 2px; padding: 3px;
-  background: var(--grain), var(--side); border-radius: 10px; box-shadow: 0 8px 20px rgba(0,0,0,.28); }
+  background: var(--grain), var(--side); border-radius: 10px; box-shadow: 0 8px 20px rgba(0,0,0,.28); opacity: .3; transition: opacity .2s; }
+.win-island.near, .win-island:focus-within { opacity: 1; }
 .win-island[hidden] { display: none; }
 .wbtn { width: 32px; height: 30px; padding: 0; display: inline-flex; align-items: center; justify-content: center; border: 0; border-radius: 7px;
   background: transparent; color: var(--text); cursor: pointer; opacity: .55; transition: opacity .15s, background-color .15s, color .15s; }
