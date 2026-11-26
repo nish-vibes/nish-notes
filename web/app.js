@@ -75,6 +75,11 @@
       const tag = n.tagName.toUpperCase();
       if (DROP.has(tag) || tag.includes(':')) continue;
       const name = KEEP[tag];
+      if (tag === 'SPAN' && INLINE_RE.test(n.getAttribute('class') || '')) {   // a style or font on part of a line
+        const sp = document.createElement('span'); sp.className = (n.getAttribute('class').match(INLINE_RE) || [''])[0];
+        copyClean(n, sp, inTable); if (sp.firstChild) dst.appendChild(sp);
+        continue;
+      }
       if (!name) {                                    // span, a, font, td ... keep the text only
         copyClean(n, dst, inTable);
         continue;
@@ -120,13 +125,15 @@
     copyClean(doc.body, box, !!inTable);
     return box.innerHTML;
   }
+  const INLINE_RE = /\b(st-title|st-sub|st-body|f-hand|f-clean|f-serif|f-mono)\b/;
+  const LOOSE_SPAN = 'span:not(.st-title):not(.st-sub):not(.st-body):not(.f-hand):not(.f-clean):not(.f-serif):not(.f-mono)';
   const memoLabel = (sec) => 'Voice memo ' + Math.floor(sec / 60) + ':' + String(sec % 60).padStart(2, '0');
 
   // ---------- keeping the live page tidy ----------
   // The browser adds styled <span>s when lines are joined or text is pasted (a body line joined
   // onto a heading came out small inside it, then grew on reopening), and can put a list inside
   // a heading. This puts things right after every change, keeping the cursor where it was.
-  const UNTIDY = 'span, font, a, [style], :is(h1, h2, h3, pre) :is(ul, ol, table, div, h1, h2, h3, pre), td table, :scope > div > :is(ul, ol, table)';
+  const UNTIDY = LOOSE_SPAN + ', font, a, [style], :is(h1, h2, h3, pre) :is(ul, ol, table, div, h1, h2, h3, pre), td table, :scope > div > :is(ul, ol, table)';
   // Where the selection is, as (text node number, offset): tidying only moves text nodes, it
   // never splits, joins or reorders them, so the same numbers find the same places afterwards.
   function selOffsets(ed) {
@@ -154,12 +161,13 @@
     try { r.setStart(pa, Math.min(o.a.o, pa.length)); r.setEnd(pb, Math.min(o.b.o, pb.length)); } catch (e) { return; }
     const s = getSelection(); s.removeAllRanges(); s.addRange(r);
   }
+  let noTidy = false;                            // while a style is being put on, before its marks become spans
   function unwrap(el) { while (el.firstChild) el.before(el.firstChild); el.remove(); }
   function tidy(ed) {
     if (!ed || !ed.querySelector(UNTIDY)) return false;
     const o = selOffsets(ed);
     for (const el of Array.from(ed.querySelectorAll('[style]'))) el.removeAttribute('style');
-    for (const el of Array.from(ed.querySelectorAll('span, font, a'))) unwrap(el);
+    for (const el of Array.from(ed.querySelectorAll(LOOSE_SPAN + ', font, a'))) unwrap(el);
     for (const h of Array.from(ed.querySelectorAll('h1, h2, h3, pre'))) {
       if (h.isConnected && h.querySelector('ul, ol, table, div, h1, h2, h3, pre')) unwrap(h);
     }
@@ -299,7 +307,7 @@
                 '<li class="page' + (p.id === activeId ? ' active' : '') + '" data-page="' + esc(p.id) + '">' +
                   '<span class="grip" title="Drag to move" aria-hidden="true">' + ICON.grip + '</span>' +
                   '<button type="button" class="page-btn"' + (p.id === activeId ? ' aria-current="page"' : '') + '>' +
-                    '<span class="t">' + esc(p.title) + '</span><span class="d">' + esc(fmtShort(p.created)) + '</span></button>' +
+                    '<span class="t">' + esc(p.title) + '</span></button>' +
                   '<button type="button" class="row-more" aria-label="Options for ' + esc(p.title) + '" aria-haspopup="menu" title="Options">' + ICON.more + '</button></li>').join('')
                 : '<li class="none">Drop a page here</li>') +
             '</ul></section>');
@@ -382,10 +390,6 @@
     $('empty').hidden = !!hit || !!preview;
     document.querySelectorAll('.ed-tool').forEach((b) => { b.disabled = !hit; });
     if (hit) syncFormat();
-    $('folderDot').style.setProperty('--fc', hit ? hit.folder.color : 'transparent');
-    $('crumbSep').hidden = !hit;
-    $('folderLabel').textContent = hit ? hit.folder.name : '';
-    $('date').textContent = hit ? fmtLong(hit.page.created) : '';
     announceTitle();
   }
 
@@ -414,7 +418,7 @@
       editor.insertAdjacentHTML('afterbegin', '<h1>' + esc(hit.page.title) + '</h1>');
     }
     if (hit && !editor.textContent.trim() && !editor.querySelector('li, table')) editor.innerHTML = '<h1><br></h1>';
-    decorateMemos();
+    decorateMemos(); applySpell();
     ink.strokes = Array.isArray(doc.ink) ? doc.ink : [];
     renderInk(); updateEmpty(); syncInkButtons();
     activeHistId = pageId || null;
@@ -773,6 +777,8 @@
       } });
       items.push('-');
     }
+    items.push({ label: 'Spelling…', run: () => setTimeout(spellMenu, 0) });
+    items.push('-');
     if (!api.mock) {
       items.push({ label: 'Open notes folder', run: () => call('open_notes_folder') });
       items.push({ label: 'Change notes folder…', run: changeFolder });
@@ -982,7 +988,7 @@
   function bindEditor(el) {
     el.addEventListener('focus', () => { lastEd = el; if (Date.now() - lastKeyNav < 400) showKbTip(); });
     el.addEventListener('input', (e) => {
-      if (!e.isComposing) tidy(el);
+      if (!e.isComposing && !noTidy) tidy(el);
       if (e.inputType === 'insertParagraph') {           // a new checklist line starts unticked
         const li = blockAt('LI');
         if (li && li.hasAttribute('data-checked') && !li.textContent.trim()) li.removeAttribute('data-checked');
@@ -1176,11 +1182,9 @@
 
   function onEditorKey(e) {
     const ctrl = e.ctrlKey || e.metaKey;
-    if (e.key === 'Escape' && menu.hidden && fmt.hidden && !ink.on && !e.shiftKey) {     // leave the page (no keyboard trap)
-      e.preventDefault(); e.stopPropagation();
-      hideKbTip();
-      const tool = Array.from(document.querySelectorAll('.head-tools .tool')).find((b) => !b.disabled);
-      if (tool) tool.focus();
+    if (e.key === 'Escape' && menu.hidden && fmt.hidden && !ink.on && !e.shiftKey && !getSelection().isCollapsed) {
+      e.preventDefault(); e.stopPropagation();       // Esc with text selected: just deselect it
+      getSelection().collapseToEnd();
       return;
     }
     if (e.key === 'Tab' && !ctrl && !e.altKey) {
@@ -1205,7 +1209,9 @@
       return;
     }
     const blocks = { t: 'h2', h: 'h2', j: 'h3', b: 'div', m: 'pre' };      // Title, Subtitle, Body (and the older Monostyled)
-    if (blocks[k]) { e.preventDefault(); setBlock(blocks[k]); }
+    const inl = { t: 'st-title', h: 'st-title', j: 'st-sub', b: 'st-body' };
+    if (inl[k]) { e.preventDefault(); applyInline('st', inl[k]); }
+    else if (blocks[k]) { e.preventDefault(); setBlock(blocks[k]); }
     else if (k === 'x') { e.preventDefault(); exec('strikeThrough'); }
     else if (k === 'l') { e.preventDefault(); setList('check'); }
     else if (k === 'v') { pastePlain = true; }
@@ -1261,7 +1267,8 @@
   function syncFormat() {                     // the toolbar shows where the cursor is
     if (!activeId || ink.on) return;
     const block = currentBlock(), list = currentList();
-    const name = list ? 'Body' : (STYLE_NAMES[block] || 'Body');
+    const span = inlineAt('st');
+    const name = span ? { 'st-title': 'Title', 'st-sub': 'Subtitle', 'st-body': 'Body' }[span] : list ? 'Body' : (STYLE_NAMES[block] || 'Body');
     if ($('styleName').textContent !== name) { $('styleName').textContent = name; $('formatBtn').setAttribute('aria-label', 'Style: ' + name); }
     document.querySelectorAll('.head-tools [data-mark]').forEach((b) => b.setAttribute('aria-pressed', String(markOn(b.dataset.mark))));
     $('moreMarksBtn').setAttribute('aria-pressed', String(['underline', 'strikeThrough', 'superscript', 'subscript'].some(markOn)));
@@ -1288,17 +1295,61 @@
     const r = btn.getBoundingClientRect();
     openMenu(r.left, r.bottom + 6, items, btn);
   }
+  // Style and font go on the selected text only. With nothing selected, the style is for the
+  // line the cursor is on (and the font for that line).
+  const BLOCK_OF = { 'st-title': 'h2', 'st-sub': 'h3', 'st-body': 'div' };
+  function inlineAt(prefix) {
+    const ed = activeEd(); if (!ed) return null;
+    let n = getSelection().anchorNode;
+    while (n && n !== ed) { if (n.nodeType === 1 && n.tagName === 'SPAN') { const c = (n.className.match(INLINE_RE) || [''])[0]; if (c.startsWith(prefix + '-')) return c; } n = n.parentNode; }
+    return null;
+  }
+  function currentStyle() {
+    const span = inlineAt('st'); if (span) return span;
+    const b = currentBlock();
+    return b === 'h2' || b === 'h1' ? 'st-title' : b === 'h3' ? 'st-sub' : 'st-body';
+  }
+  function applyInline(prefix, cls) {
+    if (!activeId || ink.on) return;
+    ensureFocus();
+    const ed = activeEd(), sel = getSelection(); if (!ed || !sel.rangeCount) return;
+    if (sel.isCollapsed) {
+      if (prefix === 'st') { setBlock(BLOCK_OF[cls]); return; }
+      const line = lineAt(ed); if (!line) return;
+      const r = document.createRange(); r.selectNodeContents(line); sel.removeAllRanges(); sel.addRange(r);
+    }
+    if (hist.pending) histCommit();
+    noTidy = true;
+    try {
+      document.execCommand('styleWithCSS', false, false);
+      document.execCommand('fontName', false, 'nnmark-' + cls);   // the browser splits the text cleanly; the marks become spans
+    } finally { noTidy = false; }
+    const o = selOffsets(ed);
+    const plain = prefix === 'st' ? 'st-body' : 'f-' + currentFont;
+    for (const f of Array.from(ed.querySelectorAll('font[face^="nnmark-"]'))) {
+      const c = f.getAttribute('face').slice(7), sp = document.createElement('span');
+      sp.className = c;
+      while (f.firstChild) sp.appendChild(f.firstChild);
+      f.replaceWith(sp);
+      sp.querySelectorAll('span').forEach((x) => { if ((x.className.match(INLINE_RE) || [''])[0].startsWith(prefix + '-')) unwrap(x); });
+      const outer = sp.parentElement && sp.parentElement.closest('span');
+      const inside = outer && ed.contains(outer) && (outer.className.match(INLINE_RE) || [''])[0].startsWith(prefix + '-');
+      if (c === plain && !inside) unwrap(sp);      // the plain choice just takes an earlier one off
+    }
+    setOffsets(ed, o);
+    tidy(ed); afterEdit(); histCommit();
+  }
   function styleMenu() {
-    const block = currentBlock(), list = currentList();
-    const st = (tag, label, keys, cls) => ({ label, keys, aria: keys.replace(/\+/g, '+'), checked: !list && (block === tag || (tag === 'h2' && block === 'h1')), cls, run: backToText(() => setBlock(tag)) });
+    const cur = currentStyle(), font = inlineAt('f') || 'f-' + currentFont;
+    const st = (cls, label, keys, mcls) => ({ label, keys, aria: keys.replace(/\+/g, '+'), checked: cur === cls, cls: mcls, run: backToText(() => applyInline('st', cls)) });
     openStyle([
-      st('h2', 'Title', 'Ctrl+Shift+T', 'st-title'),
-      st('h3', 'Subtitle', 'Ctrl+Shift+J', 'st-sub'),
-      st('div', 'Body', 'Ctrl+Shift+B', 'st-bodytext'),
+      st('st-title', 'Title', 'Ctrl+Shift+T', 'st-title'),
+      st('st-sub', 'Subtitle', 'Ctrl+Shift+J', 'st-sub'),
+      st('st-body', 'Body', 'Ctrl+Shift+B', 'st-bodytext'),
       '-',
       { note: 'Font (the sizes stay the same)' },
-      ...FONTS.map(([k, label]) => ({ label, checked: currentFont === k, cls: 'font-item font-item-' + k,
-        run: backToText(() => { applyFont(k); api.set_pref('font', k); }) })),
+      ...FONTS.map(([k, label]) => ({ label, checked: font === 'f-' + k, cls: 'font-item font-item-' + k,
+        run: backToText(() => applyInline('f', 'f-' + k)) })),
     ]);
   }
   const openStyle = (items) => menuUnder($('formatBtn'), items);
@@ -1664,8 +1715,8 @@
       m.contentEditable = 'false'; m.tabIndex = 0; m.setAttribute('role', 'button');
       const sec = +m.dataset.sec || 0;
       m.textContent = memoLabel(sec).slice(11);                  // the margin is narrow: the length is enough
-      m.title = memoLabel(sec);
-      m.setAttribute('aria-label', 'Play voice memo, ' + (sec < 60 ? sec + ' seconds' : memoLabel(sec).slice(11)));
+      m.title = memoLabel(sec) + '. Click to play, hold to drag';
+      m.setAttribute('aria-label', 'Voice memo, ' + (sec < 60 ? sec + ' seconds' : memoLabel(sec).slice(11)));
     });
   }
   function caretLine() {
@@ -1764,14 +1815,106 @@
     try { await player.play(); } catch (e) { el.classList.remove('playing'); toast('Could not play the recording: ' + errText(e)); }
   }
   for (const ev of ['pause', 'ended']) player.addEventListener(ev, () => { if (playing) playing.classList.remove('playing'); if (ev === 'ended') playing = null; });
-  document.addEventListener('mousedown', (e) => {
+  // Click a memo: a small player (play/pause, a bar to move through it, delete). Press and hold,
+  // then move: drag it to another line of the margin. Alt+Up/Down moves it with the keyboard.
+  const pop = $('memoPop'); let popFor = null, memoDrag = null;
+  const fmtTime = (t) => { t = Math.max(0, Math.floor(t || 0)); return Math.floor(t / 60) + ':' + String(t % 60).padStart(2, '0'); };
+  function syncPop() {
+    if (!popFor) return;
+    const len = (isFinite(player.duration) && player.duration) || +popFor.dataset.sec || 0;
+    const at = playing === popFor ? player.currentTime : 0;
+    $('mpSeek').value = len ? Math.round(at / len * 1000) : 0;
+    $('mpTime').textContent = fmtTime(at) + ' / ' + fmtTime(len);
+    const on = playing === popFor && !player.paused;
+    pop.classList.toggle('is-playing', on);
+    $('mpPlay').setAttribute('aria-label', on ? 'Pause' : 'Play'); $('mpPlay').title = on ? 'Pause (Space)' : 'Play (Space)';
+  }
+  function openMemoPop(m, fromKeys) {
+    popFor = m; pop.hidden = false;
+    const r = m.getBoundingClientRect();
+    pop.style.left = Math.max(8, Math.min(r.left, innerWidth - pop.offsetWidth - 8)) + 'px';
+    pop.style.top = Math.min(r.bottom + 6, innerHeight - pop.offsetHeight - 8) + 'px';
+    syncPop();
+    if (fromKeys) $('mpPlay').focus();
+  }
+  function closeMemoPop(back) { if (pop.hidden) return; const m = popFor; pop.hidden = true; popFor = null; if (back && m && document.contains(m)) m.focus(); }
+  for (const ev of ['timeupdate', 'play', 'pause', 'ended', 'loadedmetadata']) player.addEventListener(ev, syncPop);
+  $('mpPlay').addEventListener('click', () => popFor && playMemo(popFor));
+  $('mpSeek').addEventListener('input', async () => {
+    if (!popFor) return;
+    if (playing !== popFor) { await playMemo(popFor); }
+    const len = player.duration || +popFor.dataset.sec || 0;
+    if (len) player.currentTime = $('mpSeek').value / 1000 * len;
+  });
+  $('mpDelete').addEventListener('click', () => { const m = popFor; closeMemoPop(false); if (m) removeMemo(m); });
+  pop.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape') { e.preventDefault(); e.stopPropagation(); closeMemoPop(true); }
+    else if (e.key === ' ' && e.target !== $('mpSeek')) { e.preventDefault(); if (popFor) playMemo(popFor); }
+  });
+  document.addEventListener('mousedown', (e) => { if (!pop.hidden && !pop.contains(e.target) && !(e.target.closest && e.target.closest('#margin [data-memo]'))) closeMemoPop(false); });
+  const marginLine = (y) => Math.max(0, Math.floor((y - margin.getBoundingClientRect().top - 8) / 32));
+  function moveMemoTo(m, line) {
+    if (hist.pending) histCommit();
+    const lineOf = (el) => Math.round((el.offsetTop - margin.offsetTop - 8) / 32);
+    if (lineOf(m) === line) return;
+    const gap = document.createElement('div'); gap.appendChild(document.createElement('br'));
+    m.replaceWith(gap);                                   // the notes below keep their lines
+    let placed = false;
+    for (const k of Array.from(margin.children)) {
+      const l = lineOf(k);
+      if (l === line && !k.textContent.trim() && !k.dataset.memo && !k.querySelector('li, table')) { k.replaceWith(m); placed = true; break; }
+      if (l > line) { k.before(m); placed = true; break; }
+    }
+    if (!placed) {
+      const last = margin.lastElementChild;
+      let count = last ? lineOf(last) + Math.max(1, Math.round(last.offsetHeight / 32)) : 0;
+      for (; count < line; count++) { const d = document.createElement('div'); d.appendChild(document.createElement('br')); margin.appendChild(d); }
+      margin.appendChild(m);
+    }
+    updateEmpty(); changed(); histCommit();
+  }
+  document.addEventListener('pointerdown', (e) => {
     const m = e.target.closest && e.target.closest('#margin [data-memo]');
-    if (m && e.button === 0 && !ink.on) { e.preventDefault(); playMemo(m); }
+    if (!m || e.button !== 0 || ink.on) return;
+    e.preventDefault();
+    memoDrag = { m, x: e.clientX, y: e.clientY, moved: false, timer: setTimeout(() => { if (memoDrag) startMemoDrag(); }, 350) };
+  });
+  function startMemoDrag() {
+    const d = memoDrag; if (!d || d.moved || preview) return;
+    d.moved = true; closeMemoPop(false);
+    d.m.classList.add('dragging'); document.body.classList.add('dragging-now');
+    d.ghost = document.createElement('div'); d.ghost.className = 'memo-drop'; leaf.appendChild(d.ghost);
+    placeDropMark(d.y);
+  }
+  function placeDropMark(y) {
+    const d = memoDrag; if (!d || !d.ghost) return;
+    d.line = marginLine(y);
+    d.ghost.style.top = (margin.offsetTop + 8 + d.line * 32) + 'px';
+  }
+  window.addEventListener('pointermove', (e) => {
+    const d = memoDrag; if (!d) return;
+    if (!d.moved && Math.hypot(e.clientX - d.x, e.clientY - d.y) > 5) startMemoDrag();
+    if (d.moved) placeDropMark(e.clientY);
+  });
+  window.addEventListener('pointerup', () => {
+    const d = memoDrag; memoDrag = null; if (!d) return;
+    clearTimeout(d.timer);
+    if (d.moved) {
+      d.m.classList.remove('dragging'); document.body.classList.remove('dragging-now');
+      if (d.ghost) d.ghost.remove();
+      if (d.line != null && !preview) moveMemoTo(d.m, d.line);
+    } else if (popFor === d.m) closeMemoPop(false); else openMemoPop(d.m, false);
   });
   document.addEventListener('keydown', (e) => {
     const m = e.target.closest && e.target.closest('#margin [data-memo]');
-    if (m && (e.key === 'Enter' || e.key === ' ')) { e.preventDefault(); e.stopPropagation(); playMemo(m); }
-    else if (m && (e.key === 'Delete' || e.key === 'Backspace') && !preview) { e.preventDefault(); e.stopPropagation(); removeMemo(m); }
+    if (!m) return;
+    if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); e.stopPropagation(); openMemoPop(m, true); }
+    else if ((e.key === 'Delete' || e.key === 'Backspace') && !preview) { e.preventDefault(); e.stopPropagation(); removeMemo(m); }
+    else if (e.altKey && (e.key === 'ArrowUp' || e.key === 'ArrowDown') && !preview) {
+      e.preventDefault(); e.stopPropagation();
+      const line = Math.round((m.offsetTop - margin.offsetTop - 8) / 32) + (e.key === 'ArrowUp' ? -1 : 1);
+      if (line >= 0) { moveMemoTo(m, line); m.focus(); }
+    }
   }, true);
   document.addEventListener('contextmenu', (e) => {
     const m = e.target.closest && e.target.closest('#margin [data-memo]');
@@ -1779,6 +1922,8 @@
     e.preventDefault();
     openMenu(e.clientX, e.clientY, [
       { label: player.paused || playing !== m ? 'Play' : 'Pause', run: () => playMemo(m) },
+      { label: 'Move up a line', keys: 'Alt+↑', aria: 'Alt+ArrowUp', run: () => { const l = Math.round((m.offsetTop - margin.offsetTop - 8) / 32); if (l > 0) moveMemoTo(m, l - 1); } },
+      { label: 'Move down a line', keys: 'Alt+↓', aria: 'Alt+ArrowDown', run: () => moveMemoTo(m, Math.round((m.offsetTop - margin.offsetTop - 8) / 32) + 1) },
       '-',
       { label: 'Delete voice memo', danger: true, keys: 'Del', aria: 'Delete', run: () => removeMemo(m) },
     ], m);
@@ -1895,7 +2040,11 @@
       if (rec.mr) { stopMemo(false); return; }
       if (preview) { closePreview(); return; }
       if (!$('kbTip').hidden) { hideKbTip(); return; }
+      if (!$('memoPop').hidden) { closeMemoPop(true); return; }
       if (narrow() && document.body.classList.contains('side-shown')) { setSide(false); return; }
+      const s = getSelection();
+      if (s.rangeCount && !s.isCollapsed && !(e.target.tagName === 'INPUT')) { s.collapseToEnd(); return; }
+      if (!api.mock && api.window_restore) api.window_restore();      // nothing selected: from filling the screen back to a window
     }
     if (e.key === 'F6') { e.preventDefault(); hideKbTip(); cycleArea(e.shiftKey); return; }
     const ctrl = e.ctrlKey || e.metaKey;
@@ -1922,6 +2071,33 @@
   });
   document.addEventListener('visibilitychange', () => { if (document.hidden) { flushTitle(); flush(); } });
   window.addEventListener('pagehide', () => { flushTitle(); flush(); });
+
+  // ---------- spelling: on or off, margin notes too, the language ----------
+  const SPELL_LANGS = [['system', 'Same as Windows'], ['en-US', 'English (US)'], ['en-GB', 'English (UK)'], ['sv-SE', 'Svenska'], ['nb-NO', 'Norsk'], ['da-DK', 'Dansk'],
+    ['fi-FI', 'Suomi'], ['de-DE', 'Deutsch'], ['fr-FR', 'Français'], ['es-ES', 'Español'], ['it-IT', 'Italiano'], ['nl-NL', 'Nederlands']];
+  function applySpell() {
+    const on = prefs.spell !== false;
+    editor.spellcheck = on; margin.spellcheck = on && !!prefs.spellMargin;
+    const lang = prefs.spellLangNow && prefs.spellLangNow !== 'system' ? prefs.spellLangNow : '';
+    for (const el of [editor, margin]) { if (lang) el.setAttribute('lang', lang); else el.removeAttribute('lang'); }
+  }
+  function spellMenu() {
+    const r = $('moreBtn').getBoundingClientRect(), on = prefs.spell !== false;
+    const set = (key, pref, value) => { prefs[key] = value; api.set_pref(pref, value); applySpell(); };
+    openMenu(r.right - 260, r.bottom + 6, [
+      { label: 'Check spelling', checked: on, run: () => set('spell', 'spell', !on) },
+      { label: 'Check margin notes too', checked: on && !!prefs.spellMargin, disabled: !on, run: () => set('spellMargin', 'spell_margin', !prefs.spellMargin) },
+      '-',
+      { note: 'Language' + (prefs.spellLang !== prefs.spellLangNow ? ' (changes when NiSH Notes starts again)' : '') },
+      ...SPELL_LANGS.map(([code, name]) => ({ label: name, checked: (prefs.spellLang || 'system') === code, run: () => {
+        prefs.spellLang = code; api.set_pref('spell_lang', code);
+        if (code !== (prefs.spellLangNow || 'system')) toast('The spelling language changes the next time NiSH Notes starts.');
+      } })),
+      '-',
+      { label: 'Windows spelling settings…', disabled: !!api.mock, run: () => call('open_spelling_settings') },
+      { note: 'Right-click a word with a red line to correct it or add it to your dictionary.' },
+    ], $('moreBtn'));
+  }
 
   // ---------- the window: no Windows title bar, buttons in an island at the top right ----------
   function showDots(on) {
@@ -2000,6 +2176,7 @@
     const info = await api.init();
     nb = info.notebook; version = info.version || ''; prefs = info.prefs || {};
     applyFont(info.prefs && info.prefs.font);
+    applySpell();
     setupFrame();
     if (prefs.side === 'hidden') document.body.classList.add('side-hidden');
     syncSideBtn();
@@ -2056,14 +2233,16 @@
         /Subtitle/.test(menu.textContent) && /Body/.test(menu.textContent) && /Handwriting/.test(menu.textContent) && $('styleName').textContent === 'Title');
       key(menu, 'ArrowDown'); const onSub = document.activeElement.textContent.startsWith('Subtitle');
       document.activeElement.click(); await sleep(30);
-      check('the style menu works from the keyboard', onSub && !!editor.querySelector('h3') && menu.hidden && document.activeElement === editor && $('styleName').textContent === 'Subtitle');
-      $('formatBtn').click(); await sleep(30);
+      check('a style goes on the selected text only', onSub && !!editor.querySelector('h2 .st-sub') && editor.querySelector('.st-sub').textContent === 'Second line' && menu.hidden && document.activeElement === editor && $('styleName').textContent === 'Subtitle');
+      editor.insertAdjacentHTML('beforeend', '<div>Fonts are per word</div>');
+      selectText(editor, 'per'); $('formatBtn').click(); await sleep(30);
       Array.from(menu.querySelectorAll('.item')).find((x) => x.textContent.startsWith('Book')).click(); await sleep(30);
-      check('changing the font keeps the styles', document.body.classList.contains('font-serif') && !!editor.querySelector('h3'));
-      applyFont('hand');
+      const fs = editor.querySelector('.f-serif');
+      check('a font goes on the selected text only', fs && fs.textContent === 'per' && !document.body.classList.contains('font-serif'));
+      fs.parentNode.remove();
       selectText(editor, 'Second'); $('moreMarksBtn').click(); await sleep(30);
       Array.from(menu.querySelectorAll('.item')).find((x) => x.textContent.startsWith('Superscript')).click(); await sleep(30);
-      check('more text styles: superscript', !!editor.querySelector('h3 sup') && $('moreMarksBtn').getAttribute('aria-pressed') === 'true');
+      check('more text styles: superscript', !!editor.querySelector('.st-sub sup') && $('moreMarksBtn').getAttribute('aria-pressed') === 'true');
       selectText(editor, 'Second'); exec('superscript');
       selectText(editor, 'Second line'); setBlock('h2');
       editor.insertAdjacentHTML('beforeend', '<div>Buy milk</div>');
@@ -2077,8 +2256,8 @@
       check('a ticked item is announced as done', /Done/.test(getComputedStyle(li, '::before').content));
       margin.focus(); margin.innerHTML = '<div>Margin note</div>'; margin.dispatchEvent(new InputEvent('input', { bubbles: true }));
       check('margin column is separate from the page', margin.textContent === 'Margin note' && !editor.textContent.includes('Margin note'));
-      editor.focus(); key(editor, 'Escape');
-      check('Esc leaves the page', document.querySelector('.head-tools').contains(document.activeElement));
+      selectText(editor, 'Hello'); key(editor, 'Escape');
+      check('Esc with text selected deselects it', getSelection().isCollapsed && document.activeElement === editor);
       editor.focus(); key(document.body, 'F6');
       check('F6 moves to the next area', document.activeElement === margin);
       $('scribbleBtn').click();
@@ -2203,6 +2382,16 @@
       check('a voice memo sits in the margin on its line', memoEl && memoEl.textContent === '1:15' && Math.round((memoEl.offsetTop - margin.offsetTop - 8) / 32) === 2 && memoEl.contentEditable === 'false');
       await sleep(600); await save.chain;
       const back = await api.read_page(tp);
+      const mr = memoEl.getBoundingClientRect();
+      memoEl.dispatchEvent(new PointerEvent('pointerdown', { bubbles: true, button: 0, clientX: mr.left + 5, clientY: mr.top + 5 }));
+      window.dispatchEvent(new PointerEvent('pointerup', { bubbles: true, clientX: mr.left + 5, clientY: mr.top + 5 }));
+      check('clicking a memo opens its player: play, a bar, delete', !$('memoPop').hidden && !!$('mpSeek') && /1:15/.test($('mpTime').textContent));
+      closeMemoPop(false);
+      moveMemoTo(memoEl, 5);
+      check('a memo can move to another line of the margin', Math.round((memoEl.offsetTop - margin.offsetTop - 8) / 32) === 5);
+      prefs.spell = false; applySpell(); const off = editor.spellcheck === false; prefs.spell = true; applySpell();
+      check('spelling can be turned off and on', off && editor.spellcheck === true && margin.spellcheck === false);
+      await sleep(600); await save.chain;
       check('the voice memo is saved with the page, the sound next to it', back.margin.includes('data-memo="' + mid + '"') && (await api.read_memo(mid)).data === btoa('not really audio'));
       // reading a deleted page without putting it back
       await deletePage(tp); hideUndo();

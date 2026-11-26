@@ -129,3 +129,95 @@ def allow_microphone(window):
         return bool(on_ui(window, run))
     except Exception:
         return False
+
+
+# ---------- filling the screen without covering the taskbar ----------
+# Without a title bar, Windows would maximize the window over the whole monitor, taskbar
+# included. Answering WM_GETMINMAXINFO with the monitor's work area keeps the taskbar visible
+# (also for Win+Up and dragging the window to the top edge).
+WM_GETMINMAXINFO = 0x0024
+_subclass_proc = None
+
+
+def keep_taskbar(window):
+    global _subclass_proc
+    if os.name != "nt" or _subclass_proc is not None:
+        return _subclass_proc is not None
+    import ctypes
+    from ctypes import wintypes
+
+    class POINT(ctypes.Structure):
+        _fields_ = [("x", ctypes.c_long), ("y", ctypes.c_long)]
+
+    class MINMAXINFO(ctypes.Structure):
+        _fields_ = [("ptReserved", POINT), ("ptMaxSize", POINT), ("ptMaxPosition", POINT),
+                    ("ptMinTrackSize", POINT), ("ptMaxTrackSize", POINT)]
+
+    class MONITORINFO(ctypes.Structure):
+        _fields_ = [("cbSize", wintypes.DWORD), ("rcMonitor", wintypes.RECT), ("rcWork", wintypes.RECT), ("dwFlags", wintypes.DWORD)]
+
+    user32, comctl = ctypes.windll.user32, ctypes.windll.comctl32
+    LRESULT = ctypes.c_ssize_t
+    SUBCLASSPROC = ctypes.WINFUNCTYPE(LRESULT, wintypes.HWND, wintypes.UINT, wintypes.WPARAM, wintypes.LPARAM,
+                                      ctypes.c_size_t, ctypes.c_size_t)
+    comctl.DefSubclassProc.restype = LRESULT
+    comctl.DefSubclassProc.argtypes = [wintypes.HWND, wintypes.UINT, wintypes.WPARAM, wintypes.LPARAM]
+    comctl.SetWindowSubclass.argtypes = [wintypes.HWND, SUBCLASSPROC, ctypes.c_size_t, ctypes.c_size_t]
+    user32.MonitorFromWindow.restype = wintypes.HMONITOR
+    user32.MonitorFromWindow.argtypes = [wintypes.HWND, wintypes.DWORD]
+    user32.GetMonitorInfoW.argtypes = [wintypes.HMONITOR, ctypes.POINTER(MONITORINFO)]
+
+    def proc(hwnd, msg, wparam, lparam, uid, ref):
+        result = comctl.DefSubclassProc(hwnd, msg, wparam, lparam)   # WinForms sets the smallest size first
+        if msg == WM_GETMINMAXINFO and lparam:
+            try:
+                if user32.GetWindowLongW(hwnd, GWL_STYLE) & WS_CAPTION:
+                    return result                                    # the normal title bar: Windows knows best
+                mi = MONITORINFO()
+                mi.cbSize = ctypes.sizeof(MONITORINFO)
+                if user32.GetMonitorInfoW(user32.MonitorFromWindow(hwnd, 2), ctypes.byref(mi)):
+                    border = user32.GetSystemMetrics(32) + user32.GetSystemMetrics(92)   # sizing frame + padding
+                    w, m = mi.rcWork, mi.rcMonitor
+                    info = MINMAXINFO.from_address(lparam)
+                    info.ptMaxPosition.x = w.left - m.left - border
+                    info.ptMaxPosition.y = w.top - m.top
+                    info.ptMaxSize.x = (w.right - w.left) + 2 * border
+                    info.ptMaxSize.y = (w.bottom - w.top) + border
+            except Exception:
+                pass
+        return result
+
+    def run(form, hwnd):
+        global _subclass_proc
+        cb = SUBCLASSPROC(proc)
+        if comctl.SetWindowSubclass(hwnd, cb, 0x4E4E, 0):
+            _subclass_proc = cb                                  # keep it alive as long as the window
+            return True
+        return False
+    try:
+        return bool(on_ui(window, run))
+    except Exception:
+        return False
+
+
+def taskbar_visible(window):
+    """For the smoke test: when the window fills the screen, its bottom stays above the taskbar."""
+    if os.name != "nt":
+        return True
+    import ctypes
+    from ctypes import wintypes
+
+    class MONITORINFO(ctypes.Structure):
+        _fields_ = [("cbSize", wintypes.DWORD), ("rcMonitor", wintypes.RECT), ("rcWork", wintypes.RECT), ("dwFlags", wintypes.DWORD)]
+
+    def run(form, hwnd):
+        user32 = ctypes.windll.user32
+        user32.MonitorFromWindow.restype = wintypes.HMONITOR
+        user32.MonitorFromWindow.argtypes = [wintypes.HWND, wintypes.DWORD]
+        user32.GetMonitorInfoW.argtypes = [wintypes.HMONITOR, ctypes.POINTER(MONITORINFO)]
+        mi = MONITORINFO(); mi.cbSize = ctypes.sizeof(MONITORINFO)
+        user32.GetMonitorInfoW(user32.MonitorFromWindow(hwnd, 2), ctypes.byref(mi))
+        rc = wintypes.RECT(); user32.GetClientRect(hwnd, ctypes.byref(rc))
+        pt = wintypes.POINT(0, rc.bottom); user32.ClientToScreen(hwnd, ctypes.byref(pt))
+        return pt.y <= mi.rcWork.bottom
+    return bool(on_ui(window, run))

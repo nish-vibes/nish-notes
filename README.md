@@ -26,9 +26,9 @@ and settings stay where they were; delete the old `NiSHNotes.exe` once the new o
   Everything is **saved automatically** while you type. If a save ever fails (a USB stick was
   pulled out, say) a popup tells you, and the app keeps trying.
 - **A light editing toolbar** at the top of the page:
-  - **Style** shows the style you're in and opens a menu with **Title**, **Subtitle** and **Body**, and the
-    **font** for your notes: Handwriting, Clean, Book or Typewriter. The sizes of the styles stay the
-    same; only the typeface changes.
+  - **Style** shows the style you're in and opens a menu with **Title**, **Subtitle** and **Body**, and a
+    **font**: Handwriting, Clean, Book or Typewriter. Both go on the text you have selected; with nothing
+    selected, on the line the cursor is in. The sizes of the styles stay the same; only the typeface changes.
   - **B** and *I*, and **⋯** for underline, strikethrough, superscript (Ctrl+.) and subscript (Ctrl+,).
   - **Lists**: bulleted, numbered and checklist, plus indenting. Click a checklist circle to tick it off.
   - **Table.**
@@ -42,8 +42,9 @@ and settings stay where they were; delete the old `NiSHNotes.exe` once the new o
 - **Margin notes.** The narrow column left of the red line is its own little text area, for dates,
   keywords or reminders next to your page.
 - **Voice memos.** Click the microphone at the top of the page, talk, and click **Stop and save**.
-  The memo appears in the margin on the line you were writing on; click it to play it, right-click
-  (or select it and press Delete) to remove it. The sound files are kept in the `_Voice memos` folder
+  The memo appears in the margin on the line you were writing on. Click it for a small player (play and
+  pause, a bar to move through it, delete). Press and hold, then drag it to another line of the margin
+  (or Alt+↑/↓ with the keyboard). The sound files are kept in the `_Voice memos` folder
   in your notes folder.
 - **Copy and paste stay tidy.** A word or a line pasted into a line takes that line's style (bold and
   italic come along); whole lines pasted onto an empty line keep theirs. Text copied out of NiSH Notes
@@ -69,6 +70,10 @@ and settings stay where they were; delete the old `NiSHNotes.exe` once the new o
   window, double-click it to fill the screen. The edges still resize the window and Windows' snapping works.
   Want the Windows title bar back? **⋯ → Hide the Windows title bar**.
 - The window remembers its size, and whether it filled the screen, also after hiding in the tray.
+- **Esc** deselects selected text, closes a menu or leaves Scribble; with nothing selected, a window that
+  fills the screen goes back to its own size. Filling the screen keeps the Windows taskbar visible.
+- **Spelling** (in the **⋯** menu): turn it off or on, check margin notes too, choose the language (it changes
+  the next time NiSH Notes starts), and open Windows' spelling settings for your dictionary.
 - **Ctrl+W** or **Ctrl+Q** closes the window but keeps NiSH Notes running in the tray, so it opens
   instantly next time. To quit completely, right-click the tray icon → **Quit NiSH Notes**.
 - **Keep running when closed** (in the **⋯** menu): the window's X then only hides the window and

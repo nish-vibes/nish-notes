@@ -49,6 +49,7 @@ kbd { font: 11px var(--ui); color: var(--faint); }
 .sheet { position: relative; flex: 1 1 auto; min-width: 0; display: flex; flex-direction: column; background: var(--grain), var(--paper);
   border-radius: 6px 10px 10px 6px; box-shadow: 0 1px 0 #E9E4D6, 0 18px 40px rgba(0,0,0,.35); overflow: hidden; }
 .sheet-head { display: flex; align-items: center; gap: 12px; min-height: 52px; padding: 6px 12px 6px calc(var(--mw) + 16px); border-bottom: 2px solid var(--margin); }
+.head-fill { flex: 1 1 auto; }
 .crumb { flex: 1 1 auto; min-width: 0; margin: 0; display: flex; align-items: center; gap: 8px; font-size: 13px; line-height: 20px; color: var(--muted); white-space: nowrap; overflow: hidden; }
 .crumb-dot { width: 10px; height: 10px; flex: none; border-radius: 3px; background: var(--fc, transparent); }
 .crumb .folder-label { min-height: 0; color: #5C564A; overflow: hidden; text-overflow: ellipsis; }
@@ -131,6 +132,16 @@ kbd { font: 11px var(--ui); color: var(--faint); }
 .margin-ed.is-empty:hover::before { opacity: .8; }
 .margin-ed.is-empty:focus::before, .body-ed.is-empty:focus::before { opacity: 0; }
 
+/* a style or font on part of a line (sizes are fixed; the line height stays one ruled line) */
+.ed .st-title { font-size: calc(var(--body-size) * 1.2); font-weight: 700; }
+.ed .st-sub { font-size: var(--body-size); font-weight: 700; }
+.ed .st-body { font-size: var(--body-size); font-weight: 400; }
+.margin-ed .st-title { font-size: calc(var(--margin-size) * 1.2); }
+.margin-ed .st-sub, .margin-ed .st-body { font-size: var(--margin-size); }
+.ed .f-hand { font-family: var(--hand); }
+.ed .f-clean { font-family: var(--ui); }
+.ed .f-serif { font-family: "Iowan Old Style", Cambria, Georgia, serif; }
+.ed .f-mono { font-family: var(--mono); font-size: .86em; }
 /* text styles: every block stays on the lines */
 .ed :is(div, p, h1, h2, h3, pre, ul, ol, li) { margin: 0; line-height: var(--line); }
 .ed h1 { font-size: 1.45em; font-weight: 700; }
@@ -471,3 +482,22 @@ body.side-hidden .side { display: none; }
   *, *::before, *::after { transition: none !important; animation-duration: 0s !important; scroll-behavior: auto !important; }
   .undo-toast .bar { display: none; }
 }
+
+/* voice memo: the player that opens on a click, and dragging one to another line */
+.memo-pop { position: fixed; z-index: 30; display: flex; align-items: center; gap: 8px; width: 300px; padding: 6px 8px 6px 6px; box-sizing: border-box;
+  background: #fff; border-radius: 12px; box-shadow: 0 12px 32px rgba(0,0,0,.28); font: 12px var(--ui); color: var(--text); }
+.memo-pop[hidden] { display: none; }
+.memo-pop svg { width: 18px; height: 18px; }
+.memo-pop svg .fill { fill: currentColor; stroke: none; }
+.mp-play { width: 36px; height: 36px; flex: none; border: 0; border-radius: 50%; background: var(--accent); color: #fff; display: inline-flex; align-items: center; justify-content: center; cursor: pointer; }
+.mp-play:hover { background: var(--accent-hover); }
+.mp-play .i-pause, .memo-pop.is-playing .mp-play .i-play { display: none; }
+.memo-pop.is-playing .mp-play .i-pause { display: block; }
+#mpSeek { flex: 1; min-width: 0; accent-color: var(--accent); }
+.mp-time { flex: none; font-variant-numeric: tabular-nums; color: var(--muted); }
+.mp-del { width: 32px; height: 32px; flex: none; border: 0; border-radius: 8px; background: transparent; color: var(--muted); display: inline-flex; align-items: center; justify-content: center; cursor: pointer; }
+.mp-del:hover { background: rgba(179,54,47,.1); color: var(--danger); }
+:is(.mp-play, .mp-del, #mpSeek):focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.margin-ed [data-memo] { cursor: grab; touch-action: none; }
+.margin-ed [data-memo].dragging { opacity: .35; }
+.memo-drop { position: absolute; left: 8px; width: calc(var(--mw) - 16px); height: 30px; margin-top: 1px; border: 2px dashed var(--accent); border-radius: 8px; box-sizing: border-box; pointer-events: none; z-index: 4; }

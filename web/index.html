@@ -24,7 +24,7 @@
   <main class="sheet" aria-label="Page">
     <h1 class="sr-only" id="pageName">No page open</h1>
     <header class="sheet-head">
-      <p class="crumb"><span class="crumb-dot" id="folderDot"></span><span class="folder-label" id="folderLabel"></span><span class="crumb-sep" id="crumbSep" aria-hidden="true">·</span><span class="date" id="date"></span></p>
+      <span class="head-fill" aria-hidden="true"></span>
       <div class="head-tools" role="toolbar" aria-label="Page tools">
         <button type="button" class="tool" id="undoBtn" title="Undo (Ctrl+Z)" aria-label="Undo" disabled>
           <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M9 14 4 9l5-5"/><path d="M4 9h10.5a5.5 5.5 0 0 1 0 11H11"/></svg>
@@ -86,8 +86,7 @@
     </div>
 
     <div class="kbtip" id="kbTip" role="note" hidden>
-      <span><kbd>Esc</kbd> leave the page</span>
-      <span><kbd>F6</kbd> page, margin, folders</span>
+      <span><kbd>F6</kbd> move between page, margin, folders and tools</span>
       <button type="button" id="kbTipClose" aria-label="Don't show this tip again" title="Don't show again">
         <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18"/></svg>
       </button>
@@ -191,6 +190,17 @@
   </div>
 </div>
 <div class="toast" id="toast" role="status" hidden></div>
+<div class="memo-pop" id="memoPop" role="dialog" aria-label="Voice memo" hidden>
+  <button type="button" class="mp-play" id="mpPlay" aria-label="Play" title="Play (Space)">
+    <svg class="i-play" viewBox="0 0 24 24" aria-hidden="true"><path d="M8 5.5v13l10.5-6.5z" class="fill"/></svg>
+    <svg class="i-pause" viewBox="0 0 24 24" aria-hidden="true"><path d="M7 5h3.6v14H7zM13.4 5H17v14h-3.6z" class="fill"/></svg>
+  </button>
+  <input type="range" id="mpSeek" min="0" max="1000" value="0" step="1" aria-label="Position in the recording">
+  <span class="mp-time" id="mpTime">0:00 / 0:00</span>
+  <button type="button" class="mp-del" id="mpDelete" aria-label="Delete voice memo" title="Delete voice memo (Del)">
+    <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7h16M10 11v6M14 11v6M6 7l1 12a2 2 0 0 0 2 2h6a2 2 0 0 0 2-2l1-12M9 7V4h6v3"/></svg>
+  </button>
+</div>
 
 <script src="mock.js"></script>
 <script src="app.js"></script>

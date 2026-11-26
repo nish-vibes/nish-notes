@@ -37,6 +37,21 @@ except OSError:
     pass
 
 
+# Spelling languages offered in the app. The language is set when the window starts (WebView2
+# takes it from its accept-languages), so a change applies from the next start.
+SPELL_LANGS = ("system", "en-US", "en-GB", "sv-SE", "nb-NO", "da-DK", "fi-FI", "de-DE", "fr-FR", "es-ES", "it-IT", "nl-NL")
+SPELL_LANG_NOW = "system"
+
+
+def apply_spell_language():
+    global SPELL_LANG_NOW
+    lang = settings.get("spell_lang", "system")
+    if lang in SPELL_LANGS and lang != "system":
+        extra = os.environ.get("WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS", "")
+        os.environ["WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS"] = (extra + " --accept-lang=" + lang + ",en-US").strip()
+        SPELL_LANG_NOW = lang
+
+
 class Api:
     """Everything the page may ask Python for. Only methods are exposed to JavaScript."""
 
@@ -51,7 +66,9 @@ class Api:
                 "prefs": {"font": settings.get("font", "hand"), "lastPage": settings.get("last_page"),
                           "keepRunning": bool(settings.get("keep_running", False)),
                           "kbTip": settings.get("kb_tip", "on"), "side": settings.get("side", "shown"),
-                          "trayAvailable": os.name == "nt", "frame": settings.get("frame", "dots")}}
+                          "trayAvailable": os.name == "nt", "frame": settings.get("frame", "dots"),
+                          "spell": bool(settings.get("spell", True)), "spellMargin": bool(settings.get("spell_margin", False)),
+                          "spellLang": settings.get("spell_lang", "system"), "spellLangNow": SPELL_LANG_NOW}}
 
     def reload(self):
         return self._nb.load()
@@ -119,6 +136,10 @@ class Api:
     def set_pref(self, key, value):
         if key in ("font", "last_page", "kb_tip", "side"):
             settings.put(key, value)
+        elif key in ("spell", "spell_margin"):
+            settings.put(key, bool(value))
+        elif key == "spell_lang":
+            settings.put(key, value if value in SPELL_LANGS else "system")
         elif key == "keep_running" and self._app:
             return self._app.set_keep_running(bool(value))
         elif key == "frame" and self._app:
@@ -132,6 +153,11 @@ class Api:
 
     def window_maximized(self):
         return bool(self._app and self._app.maximized)
+
+    def window_restore(self):
+        """Esc with nothing selected: from filling the screen back to the window's own size."""
+        if self._app and self._app.maximized:
+            self._app.toggle_maximized()
 
     def window_minimize(self):
         self._window.minimize()
@@ -154,6 +180,11 @@ class Api:
             frame.start_move(self._window)
         except Exception:
             pass
+
+    def open_spelling_settings(self):
+        """Windows' own spelling settings: personal dictionary, autocorrect, typing languages."""
+        if os.name == "nt":
+            os.startfile("ms-settings:typing")
 
     def open_notes_folder(self):
         if os.name == "nt":
@@ -229,6 +260,8 @@ class App:
             try:
                 ok = frame.set_caption(self.window, not want_dots)
                 self.dots = want_dots and ok
+                if self.dots:
+                    frame.keep_taskbar(self.window)
             except Exception:
                 self.dots = False
         return self.dots
@@ -358,6 +391,9 @@ def smoketest(window, api, outdir):
         good = hidden_ok and frame.is_maximized(window) and not frame.has_caption(window)
         lines.append(("ok   " if good else "FAIL ") + "Ctrl+W hides to the tray; the window comes back filling the screen")
         ok = ok and good
+        good = frame.taskbar_visible(window)
+        lines.append(("ok   " if good else "FAIL ") + "filling the screen leaves the Windows taskbar visible")
+        ok = ok and good
         app.toggle_maximized()
         time.sleep(0.4)
         on = api.set_pref("keep_running", True)
@@ -405,6 +441,7 @@ def main():
 
     if not smoke and instance.hand_off():
         return                                   # already running: it shows its window instead
+    apply_spell_language()
     api = Api(notes)
     w, h = settings.get("window", [1200, 800])
     window = webview.create_window(

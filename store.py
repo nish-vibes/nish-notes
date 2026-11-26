@@ -81,6 +81,7 @@ ul.checklist>li[data-checked]::before{content:"\\25C9"}ul.checklist>li[data-chec
 .nn-ink{position:absolute;left:0;top:0;pointer-events:none;overflow:visible}
 .nn-page table{width:100%;table-layout:fixed;border-collapse:collapse;box-shadow:inset 1px 1px 0 #8FA6C7}
 .nn-page td{padding:0 8px;line-height:32px;vertical-align:top;box-shadow:inset -1px -1px 0 #8FA6C7}
+.st-title{font-size:1.2em;font-weight:700}.st-sub{font-weight:700}.st-body{font-size:1em;font-weight:400}.f-clean{font-family:"Segoe UI",sans-serif}.f-serif{font-family:Cambria,Georgia,serif}.f-mono{font-family:Consolas,monospace}
 .nn-margin [data-memo]{color:#2F5E9E;font:600 13px/32px "Segoe UI",sans-serif}
 @media print{.nn-page{background:none}}
 """
