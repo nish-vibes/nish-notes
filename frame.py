@@ -137,6 +137,7 @@ def allow_microphone(window):
 # (also for Win+Up and dragging the window to the top edge).
 WM_GETMINMAXINFO = 0x0024
 _subclass_proc = None
+LAST_ERROR = ''
 
 
 def keep_taskbar(window):
@@ -188,15 +189,18 @@ def keep_taskbar(window):
         return result
 
     def run(form, hwnd):
-        global _subclass_proc
+        global _subclass_proc, LAST_ERROR
         cb = SUBCLASSPROC(proc)
         if comctl.SetWindowSubclass(hwnd, cb, 0x4E4E, 0):
             _subclass_proc = cb                                  # keep it alive as long as the window
             return True
+        LAST_ERROR = "SetWindowSubclass refused (error %d)" % ctypes.GetLastError()
         return False
     try:
         return bool(on_ui(window, run))
-    except Exception:
+    except Exception as e:
+        global LAST_ERROR
+        LAST_ERROR = repr(e)
         return False
 
 
@@ -221,3 +225,65 @@ def taskbar_visible(window):
         pt = wintypes.POINT(0, rc.bottom); user32.ClientToScreen(hwnd, ctypes.byref(pt))
         return pt.y <= mi.rcWork.bottom
     return bool(on_ui(window, run))
+
+
+def _work_area(hwnd):
+    import ctypes
+    from ctypes import wintypes
+
+    class MONITORINFO(ctypes.Structure):
+        _fields_ = [("cbSize", wintypes.DWORD), ("rcMonitor", wintypes.RECT), ("rcWork", wintypes.RECT), ("dwFlags", wintypes.DWORD)]
+    user32 = ctypes.windll.user32
+    user32.MonitorFromWindow.restype = wintypes.HMONITOR
+    user32.MonitorFromWindow.argtypes = [wintypes.HWND, wintypes.DWORD]
+    user32.GetMonitorInfoW.argtypes = [wintypes.HMONITOR, ctypes.POINTER(MONITORINFO)]
+    mi = MONITORINFO(); mi.cbSize = ctypes.sizeof(MONITORINFO)
+    user32.GetMonitorInfoW(user32.MonitorFromWindow(hwnd, 2), ctypes.byref(mi))
+    return mi.rcWork, mi.rcMonitor
+
+
+def fit_work_area(window):
+    """Fallback when Windows still maximized over the taskbar: put the maximized window on the
+    work area (the screen minus the taskbar). It stays maximized; only its size changes."""
+    if os.name != "nt":
+        return False
+
+    def run(form, hwnd):
+        import ctypes
+        from ctypes import wintypes
+        user32 = _user32()
+        if user32.GetWindowLongW(hwnd, GWL_STYLE) & WS_CAPTION or not user32.IsZoomed(hwnd):
+            return False
+        w, _m = _work_area(hwnd)
+        rc = wintypes.RECT(); user32.GetWindowRect(hwnd, ctypes.byref(rc))
+        cr = wintypes.RECT(); user32.GetClientRect(hwnd, ctypes.byref(cr))
+        pt = wintypes.POINT(0, 0); user32.ClientToScreen(hwnd, ctypes.byref(pt))
+        left, top = pt.x - rc.left, pt.y - rc.top                      # the invisible frame around the client area
+        right, bottom = (rc.right - rc.left) - left - cr.right, (rc.bottom - rc.top) - top - cr.bottom
+        user32.SetWindowPos(hwnd, None, w.left - left, w.top - top, (w.right - w.left) + left + right,
+                            (w.bottom - w.top) + top + bottom, SWP_NOACTIVATE | SWP_NOZORDER)
+        return True
+    try:
+        return bool(on_ui(window, run))
+    except Exception:
+        return False
+
+
+def describe(window):
+    """For the smoke test report: where the client area is against the screen's work area."""
+    if os.name != "nt":
+        return ""
+
+    def run(form, hwnd):
+        import ctypes
+        from ctypes import wintypes
+        user32 = _user32()
+        w, m = _work_area(hwnd)
+        cr = wintypes.RECT(); user32.GetClientRect(hwnd, ctypes.byref(cr))
+        pt = wintypes.POINT(0, cr.bottom); user32.ClientToScreen(hwnd, ctypes.byref(pt))
+        return "client bottom %d, work area bottom %d, monitor bottom %d, zoomed %s, subclass %s %s" % (
+            pt.y, w.bottom, m.bottom, bool(user32.IsZoomed(hwnd)), _subclass_proc is not None, LAST_ERROR)
+    try:
+        return on_ui(window, run)
+    except Exception as e:
+        return repr(e)

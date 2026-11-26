@@ -235,6 +235,8 @@ class App:
             return
         self.maximized = on
         settings.put("maximized", on)
+        if on:
+            self.ensure_taskbar()
         js = "window.NN && NN.showFilled && NN.showFilled(%s)" % ("true" if on else "false")
 
         def tell_page():     # the fill-the-screen button shows the other icon
@@ -243,6 +245,16 @@ class App:
             except Exception:
                 pass
         threading.Thread(target=tell_page, daemon=True).start()
+
+    def ensure_taskbar(self, delay=0.15):
+        """Filling the screen without a title bar must not cover the taskbar: check, and fix."""
+        def check():
+            try:
+                if self.dots and not frame.taskbar_visible(self.window):
+                    frame.fit_work_area(self.window)
+            except Exception:
+                pass
+        threading.Timer(delay, check).start()
 
     def toggle_maximized(self):
         if self.maximized:
@@ -262,6 +274,8 @@ class App:
                 self.dots = want_dots and ok
                 if self.dots:
                     frame.keep_taskbar(self.window)
+                    if self.maximized:
+                        self.ensure_taskbar()
             except Exception:
                 self.dots = False
         return self.dots
@@ -305,6 +319,8 @@ class App:
         self.hidden = False
         if self.dots:
             self.apply_frame()
+            if self.maximized:
+                self.ensure_taskbar(0.3)
         if not settings.get("keep_running", False):
             self.tray.stop()                 # it was only there while the window was hidden
 
@@ -393,6 +409,7 @@ def smoketest(window, api, outdir):
         ok = ok and good
         good = frame.taskbar_visible(window)
         lines.append(("ok   " if good else "FAIL ") + "filling the screen leaves the Windows taskbar visible")
+        lines.append("     (" + str(frame.describe(window)) + ")")
         ok = ok and good
         app.toggle_maximized()
         time.sleep(0.4)
